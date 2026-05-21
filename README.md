@@ -1,15 +1,3 @@
-# Packages
-- [pi-subagents](https://github.com/nicobailon/pi-subagents)
-- [pi-intercom](https://github.com/nicobailon/pi-intercom)
-- [pi-mcp-adapter](https://github.com/nicobailon/pi-mcp-adapter)
-
-# Agents
-## Prompts
-### developer
-```
-
-```
-
 # Skills
 - [grill-me](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me)
 - [to-issues](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-issues)

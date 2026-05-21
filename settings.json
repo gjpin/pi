@@ -1,11 +1,7 @@
 {
   "defaultProvider": "deepseek",
-  "defaultModel": "deepseek-v4-pro",
+  "defaultModel": "deepseek-v4-flash",
   "defaultThinkingLevel": "xhigh",
-  "packages": [
-    "npm:pi-intercom",
-    "npm:pi-mcp-adapter",
-    "npm:pi-subagents"
-  ],
+  "packages": [],
   "lastChangelogVersion": "0.75.4"
 }
