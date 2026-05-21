@@ -1,3 +1,5 @@
 auth.json
 bin/
 sessions/
+npm/
+intercom/
