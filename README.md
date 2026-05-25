@@ -1,3 +1,20 @@
+# How to use
+1. Install [pi-sandbox](https://github.com/gjpin/pi-sandbox)
+2. Setup env and create alias `.zshrc.d/ai`:
+```bash
+# Web search skills
+export EXA_API_KEY=
+
+# Providers
+export DEEPSEEK_API_KEY=
+export OPENROUTER_API_KEY=
+export OPENCODE_API_KEY=
+
+# Aliases
+alias pi='pi-sandbox --no-skills --skill ~/.pi/agent/skills/grill-me --skill ~/.pi/agent/skills/write-a-skill'
+```
+3. Git clone this repo to `~/.pi/agent`
+
 # Skills
 - [grill-me](https://github.com/mattpocock/skills/tree/main/skills/productivity/grill-me)
 - [to-issues](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-issues)
