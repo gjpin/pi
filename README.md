@@ -5,6 +5,8 @@
 - [to-prd](https://github.com/mattpocock/skills/tree/main/skills/engineering/improve-codebase-architecture)
 - [write-a-skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/write-a-skill)
 - [tdd](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)
+- [flutter](https://github.com/flutter/skills)
+- [dart](https://github.com/dart-lang/skills)
 
 # Extensions
 ## Prompts

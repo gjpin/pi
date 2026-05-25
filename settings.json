@@ -1,7 +1,7 @@
 {
-  "defaultProvider": "deepseek",
-  "defaultModel": "deepseek-v4-flash",
-  "defaultThinkingLevel": "xhigh",
+  "defaultProvider": "openrouter",
+  "defaultModel": "deepseek/deepseek-v4-pro",
+  "defaultThinkingLevel": "high",
   "packages": [],
-  "lastChangelogVersion": "0.75.4"
+  "lastChangelogVersion": "0.75.5"
 }
