@@ -10,6 +10,12 @@
 
 # Extensions
 ## Prompts
+### subagent
+Base: [subagent example](https://github.com/earendil-works/pi/tree/main/packages/coding-agent/examples/extensions/subagent)
+```
+The existing "subagent" Pi extension delegates tasks to specialized subagents with isolated context windows. In order to save context, the subagents should allow to specify which skills to load. The skills should be specified in the agents/*.md files. Only skills specified in the agent's file should be loaded.
+```
+
 ### exa-contents
 ```
 Create a Pi agent tool named exa-contents.
