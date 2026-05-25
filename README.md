@@ -4,9 +4,17 @@
 - [improve-codebase-architecture](https://github.com/mattpocock/skills/blob/main/skills/engineering/to-issues)
 - [to-prd](https://github.com/mattpocock/skills/tree/main/skills/engineering/improve-codebase-architecture)
 - [write-a-skill](https://github.com/mattpocock/skills/tree/main/skills/productivity/write-a-skill)
-- [tdd](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)
 - [flutter](https://github.com/flutter/skills)
 - [dart](https://github.com/dart-lang/skills)
+- [golang](https://github.com/samber/cc-skills-golang)
+
+# Agents
+## Prompts
+### developer
+Base: [tdd](https://github.com/mattpocock/skills/tree/main/skills/engineering/tdd)
+```
+@tdd is an agent skill. I need it converted to an agent, so that i can use it as a subagent. Try to match the new agent as close as possible to the skill. the agent will be called "developer". It should be language agnostic.
+```
 
 # Extensions
 ## Prompts

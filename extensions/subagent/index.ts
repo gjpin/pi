@@ -23,6 +23,7 @@ import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@ear
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
+import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 const MAX_PARALLEL_TASKS = 8;
 const MAX_CONCURRENCY = 4;
@@ -258,6 +259,51 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 
+/**
+ * Resolve skill names to directory/file paths by scanning standard skill directories.
+ * Returns paths suitable for use with `--skill <path>`.
+ */
+function findSkillPaths(skillNames: string[], cwd: string): string[] {
+	if (skillNames.length === 0) return [];
+
+	const home = os.homedir();
+	const agentDir = getAgentDir();
+
+	// Standard skill directories (in priority order)
+	const dirs: string[] = [
+		path.join(agentDir, "skills"),                 // ~/.pi/agent/skills/
+		path.join(home, ".agents", "skills"),           // ~/.agents/skills/
+		path.join(cwd, ".pi", "skills"),                 // .pi/skills/ (project)
+		path.join(cwd, ".agents", "skills"),             // .agents/skills/ (project)
+	];
+
+	const paths: string[] = [];
+	const found = new Set<string>();
+
+	for (const skillName of skillNames) {
+		for (const dir of dirs) {
+			// Check for <dir>/<name>.md (single-file skill)
+			const filePath = path.join(dir, `${skillName}.md`);
+			if (!found.has(skillName) && fs.existsSync(filePath)) {
+				paths.push(filePath);
+				found.add(skillName);
+				break;
+			}
+
+			// Check for <dir>/<name>/ (directory skill with SKILL.md)
+			const dirPath = path.join(dir, skillName);
+			const skillMdPath = path.join(dirPath, "SKILL.md");
+			if (!found.has(skillName) && fs.existsSync(skillMdPath)) {
+				paths.push(dirPath);
+				found.add(skillName);
+				break;
+			}
+		}
+	}
+
+	return paths;
+}
+
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
@@ -288,6 +334,11 @@ async function runSingleAgent(
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
+	if (agent.skills && agent.skills.length > 0) {
+		const skillPaths = findSkillPaths(agent.skills, defaultCwd);
+		args.push("--no-skills");
+		for (const skillPath of skillPaths) args.push("--skill", skillPath);
+	}
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
