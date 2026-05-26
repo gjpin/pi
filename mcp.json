@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "chrome-devtools": {
+      "command": "npx",
+      "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
+    },
+    "nuxt-ui": {
+      "url": "https://ui.nuxt.com/mcp"
+    }
+  }
+}

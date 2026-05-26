@@ -1,4 +1,5 @@
 # How to use
+1. Install [pi](https://pi.dev/): `pnpm add -g --ignore-scripts @earendil-works/pi-coding-agent`
 1. Install [pi-sandbox](https://github.com/gjpin/pi-sandbox)
 2. Setup env and create alias `.zshrc.d/ai`:
 ```bash
@@ -24,6 +25,7 @@ alias pi='pi-sandbox --no-skills --skill ~/.pi/agent/skills/grill-me --skill ~/.
 - [flutter](https://github.com/flutter/skills)
 - [dart](https://github.com/dart-lang/skills)
 - [golang](https://github.com/samber/cc-skills-golang)
+- [nuxt-ui](https://ui.nuxt.com/docs/getting-started/ai/skills)
 
 # Agents
 ## Prompts
