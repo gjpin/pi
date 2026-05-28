@@ -2,6 +2,8 @@
   "defaultProvider": "deepseek",
   "defaultModel": "deepseek-v4-pro",
   "defaultThinkingLevel": "xhigh",
-  "packages": ["npm:pi-mcp-adapter"],
-  "lastChangelogVersion": "0.75.5"
+  "packages": [
+    "npm:pi-mcp-adapter"
+  ],
+  "lastChangelogVersion": "0.76.0"
 }

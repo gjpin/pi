@@ -27,6 +27,10 @@ alias pi='pi-sandbox --no-skills --skill ~/.pi/agent/skills/grill-me --skill ~/.
 - [golang](https://github.com/samber/cc-skills-golang)
 - [nuxt-ui](https://ui.nuxt.com/docs/getting-started/ai/skills)
 
+# MCP
+- [nuxt-ui](https://ui.nuxt.com/docs/getting-started/ai/mcp)
+- [nuxt](https://nuxt.com/docs/4.x/guide/ai/mcp)
+
 # Agents
 ## Prompts
 ### developer

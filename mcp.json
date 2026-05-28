@@ -4,6 +4,9 @@
       "command": "npx",
       "args": ["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]
     },
+    "nuxt": {
+      "url": "https://nuxt.com/mcp"
+    },
     "nuxt-ui": {
       "url": "https://ui.nuxt.com/mcp"
     }
