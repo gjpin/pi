@@ -361,7 +361,6 @@ npx nuxi@latest init -t ui/dashboard    # Dashboard
 npx nuxi@latest init -t ui/docs         # Docs (Nuxt Content)
 npx nuxi@latest init -t ui/landing      # Landing page
 npx nuxi@latest init -t ui/saas         # SaaS (landing + pricing + docs + blog)
-npx nuxi@latest init -t ui/chat         # AI chat (Vercel AI SDK)
 npx nuxi@latest init -t ui/editor       # Rich text editor
 npx nuxi@latest init -t ui/portfolio    # Portfolio
 npx nuxi@latest init -t ui/changelog    # Changelog

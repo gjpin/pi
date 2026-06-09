@@ -45,7 +45,6 @@ Based on the task, load the relevant reference files **before writing any code**
 - [landing](references/layouts/landing.md) — landing pages, blog, changelog, pricing
 - [dashboard](references/layouts/dashboard.md) — admin UI with sidebar and panels
 - [docs](references/layouts/docs.md) — documentation sites with navigation and TOC
-- [chat](references/layouts/chat.md) — AI chat with Vercel AI SDK
 - [editor](references/layouts/editor.md) — rich text editor with toolbars
 
 **Recipes** — complete patterns for common tasks:

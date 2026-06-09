@@ -26,6 +26,8 @@ alias pi='pi-sandbox --no-skills --skill ~/.pi/agent/skills/grill-me --skill ~/.
 - [dart](https://github.com/dart-lang/skills)
 - [golang](https://github.com/samber/cc-skills-golang)
 - [nuxt-ui](https://ui.nuxt.com/docs/getting-started/ai/skills)
+- [android-reverse-engineering](https://github.com/SimoneAvogadro/android-reverse-engineering-skill)
+- [fetch-url](https://github.com/arabold/docs-mcp-server/tree/main/skills/fetch-url)
 
 # MCP
 - [nuxt-ui](https://ui.nuxt.com/docs/getting-started/ai/mcp)
