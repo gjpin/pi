@@ -34,7 +34,7 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 
-export const CYMNAL_COMMANDS = [
+export const CYMBAL_COMMANDS = [
 	"structure",
 	"investigate",
 	"trace",
@@ -52,7 +52,7 @@ export const CYMNAL_COMMANDS = [
 	"version",
 ] as const;
 
-export type CymbalCommand = (typeof CYMNAL_COMMANDS)[number];
+export type CymbalCommand = (typeof CYMBAL_COMMANDS)[number];
 
 export const MAX_PARALLEL_TASKS = 8;
 export const MAX_CONCURRENCY = 4;
@@ -1111,59 +1111,85 @@ export function registerSubagent(
 
 		async execute() {
 			const results: string[] = [];
-			const errors: string[] = [];
 
-			if (process.env.PI_FFF_MODE === "override") {
-				results.push("✓ PI_FFF_MODE=override");
-			} else {
-				errors.push(
-					"✗ PI_FFF_MODE is not set to \"override\". " +
-						"Set it in your shell profile or session before launching pi.",
+			if (process.env.PI_FFF_MODE !== "override") {
+				throw new Error(
+					"PI_FFF_MODE is not set to \"override\". " +
+						"Set it in your shell profile or session before launching pi. " +
+						"See: https://github.com/dmtrKovalenko/fff",
+				);
+			}
+			results.push("✓ PI_FFF_MODE=override");
+
+			// Check active tools
+			const activeTools = pi.getActiveTools();
+			if (!activeTools.includes("find")) {
+				throw new Error(
+					"'find' is not active. Ensure pi-fff is installed and enabled. " +
+						"See: https://github.com/dmtrKovalenko/fff",
+				);
+			}
+			if (!activeTools.includes("grep")) {
+				throw new Error(
+					"'grep' is not active. Ensure pi-fff is installed and enabled. " +
+						"See: https://github.com/dmtrKovalenko/fff",
 				);
 			}
 
-			// Inspect getAllTools() sourceInfo to establish FFF override status
+			// Verify that the active find/grep are FFF (not builtin or unrelated extension)
 			const allTools = pi.getAllTools();
 			const findTool = allTools.find((t) => t.name === "find");
 			const grepTool = allTools.find((t) => t.name === "grep");
 
-			if (findTool && findTool.sourceInfo && findTool.sourceInfo.source !== "builtin") {
-				results.push("✓ FFF find override active");
-			} else {
-				errors.push(
-					"✗ 'find' is not an FFF override. Install FFF and enable override mode. " +
-						"See: https://github.com/earendil-works/fff",
+			function isFffProvenance(tool: { sourceInfo?: { source: string; path?: string } }): boolean {
+				if (!tool?.sourceInfo) return false;
+				const combined = `${tool.sourceInfo.source} ${tool.sourceInfo.path ?? ""}`.toLowerCase();
+				return (
+					combined.includes("@ff-labs/pi-fff") ||
+					combined.includes("dmtrkovalenko/fff") ||
+					combined.includes("ff-labs") ||
+					combined.includes("fff")
 				);
 			}
 
-			if (grepTool && grepTool.sourceInfo && grepTool.sourceInfo.source !== "builtin") {
-				results.push("✓ FFF grep override active");
-			} else {
-				errors.push(
-					"✗ 'grep' is not an FFF override. Install FFF and enable override mode. " +
-						"See: https://github.com/earendil-works/fff",
+			if (!findTool || findTool.sourceInfo?.source === "builtin" || !isFffProvenance(findTool)) {
+				throw new Error(
+					"'find' is not the pi-fff FFF override. " +
+						"Install pi-fff (npm i @ff-labs/pi-fff or add `npm:@ff-labs/pi-fff` / `git:github.com/dmtrKovalenko/fff` to packages) " +
+						"and enable override mode. " +
+						"See: https://github.com/dmtrKovalenko/fff",
 				);
 			}
+			results.push("✓ FFF find override active (pi-fff)");
+
+			if (!grepTool || grepTool.sourceInfo?.source === "builtin" || !isFffProvenance(grepTool)) {
+				throw new Error(
+					"'grep' is not the pi-fff FFF override. " +
+						"Install pi-fff (npm i @ff-labs/pi-fff or add `npm:@ff-labs/pi-fff` / `git:github.com/dmtrKovalenko/fff` to packages) " +
+						"and enable override mode. " +
+						"See: https://github.com/dmtrKovalenko/fff",
+				);
+			}
+			results.push("✓ FFF grep override active (pi-fff)");
 
 			const cymbalResult = await execCheck("cymbal", ["version"]);
-			if (cymbalResult.exitCode === 0 && cymbalResult.stdout.trim()) {
-				results.push(`✓ Cymbal: ${cymbalResult.stdout.trim().split("\n")[0]}`);
-			} else {
-				errors.push(
-					"✗ Cymbal not found or not executable. Install: " +
-						"npm install -g @earendil-works/cymbal",
+			if (cymbalResult.exitCode !== 0 || !cymbalResult.stdout.trim()) {
+				const stderr = cymbalResult.stderr ? `: ${cymbalResult.stderr}` : "";
+				throw new Error(
+					`Cymbal not found or not executable${stderr}. ` +
+						"Install from https://github.com/1broseidon/cymbal",
 				);
 			}
+			results.push(`✓ Cymbal: ${cymbalResult.stdout.trim().split("\n")[0]}`);
 
-			const allOk = errors.length === 0;
 			return {
-				content: [{ type: "text" as const, text: [...results, ...errors].join("\n") }],
-				isError: !allOk,
+				content: [{ type: "text" as const, text: results.join("\n") }],
+				details: cymbalResult,
 			};
 		},
 	});
 
-	const ALLOWED_CYMBAL_COMMANDS = new Set(CYMNAL_COMMANDS);
+	const ALLOWED_CYMBAL_COMMANDS = new Set(CYMBAL_COMMANDS);
 	const CYMBAL_OUTPUT_CAP = 50 * 1024;
 
 	pi.registerTool({
@@ -1187,53 +1213,44 @@ export function registerSubagent(
 		async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
 			const command = params.command as string;
 			if (!ALLOWED_CYMBAL_COMMANDS.has(command)) {
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `Invalid cymbal command: "${command}". Allowed: ${CYMNAL_COMMANDS.join(", ")}.`,
-						},
-					],
-					isError: true,
-				};
+				throw new Error(
+					`Invalid cymbal command: "${command}". Allowed: ${CYMBAL_COMMANDS.join(", ")}.`,
+				);
 			}
 
 			const args = (params.args as string[]) ?? [];
-			try {
-				const result = await pi.exec("cymbal", [command, ...args], { signal });
-				let output = result.stdout;
-				if (result.stderr) {
-					output += output ? "\n" : "";
-					output += result.stderr;
+			if (signal?.aborted) {
+				throw new Error("cymbal execution aborted");
+			}
+
+			const result = await pi.exec("cymbal", [command, ...args], { signal });
+
+			if (result.code !== 0 && result.code !== undefined) {
+				const errMsg = (result.stderr || result.stdout || "").trim();
+				throw new Error(errMsg || `cymbal "${command}" exited with code ${result.code}`);
+			}
+
+			const fullOutput = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
+			const byteLength = Buffer.byteLength(fullOutput, "utf8");
+			if (byteLength > CYMBAL_OUTPUT_CAP) {
+				let truncated = fullOutput.slice(0, CYMBAL_OUTPUT_CAP);
+				while (Buffer.byteLength(truncated, "utf8") > CYMBAL_OUTPUT_CAP) {
+					truncated = truncated.slice(0, -1);
 				}
-				const byteLength = Buffer.byteLength(output, "utf8");
-				if (byteLength > CYMBAL_OUTPUT_CAP) {
-					let truncated = output.slice(0, CYMBAL_OUTPUT_CAP);
-					while (Buffer.byteLength(truncated, "utf8") > CYMBAL_OUTPUT_CAP) {
-						truncated = truncated.slice(0, -1);
-					}
-					output = `${truncated}\n\n[Output truncated: ${byteLength - Buffer.byteLength(truncated, "utf8")} bytes omitted. Full output preserved in tool details.]`;
-				}
-				if (result.code !== 0) {
-					return {
-						content: [{ type: "text" as const, text: output }],
-						isError: true,
-					};
-				}
-				return {
-					content: [{ type: "text" as const, text: output }],
-				};
-			} catch (e) {
 				return {
 					content: [
 						{
 							type: "text" as const,
-							text: `cymbal execution failed: ${e instanceof Error ? e.message : String(e)}`,
+							text: `${truncated}\n\n[Output truncated: ${byteLength - Buffer.byteLength(truncated, "utf8")} bytes omitted. Full output preserved in tool details.]`,
 						},
 					],
-					isError: true,
+					details: { fullOutput },
 				};
 			}
+
+			return {
+				content: [{ type: "text" as const, text: fullOutput }],
+			};
 		},
 	});
 }

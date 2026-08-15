@@ -4,11 +4,11 @@ import { PassThrough } from "node:stream";
 import { afterEach, describe, it } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { registerSubagent, type ExecCheck, type SpawnProcess, CYMNAL_COMMANDS } from "./index.ts";
+import { registerSubagent, type ExecCheck, type SpawnProcess, CYMBAL_COMMANDS } from "./index.ts";
 
 type ToolResult = {
 	content: Array<{ type: string; text: string }>;
-	details?: { results?: Array<Record<string, unknown>> };
+	details?: Record<string, unknown>;
 	isError?: boolean;
 };
 
@@ -91,11 +91,16 @@ function fakeSpawn(
 
 type MockToolEntry = {
 	name: string;
-	sourceInfo: { source: string; path?: string };
+	sourceInfo: { source: string; path?: string; scope?: string; origin?: string };
 };
 
-function mockAllTools(overrides?: Partial<Record<string, "builtin" | "extension">>): MockToolEntry[] {
-	const defaults: Record<string, "builtin" | "extension"> = {
+type ToolSource = "builtin" | "extension" | "sdk";
+
+function mockAllTools(
+	overrides?: Partial<Record<string, ToolSource>>,
+	provenance?: "fff" | "other",
+): MockToolEntry[] {
+	const defaults: Record<string, ToolSource> = {
 		read: "builtin",
 		bash: "builtin",
 		write: "builtin",
@@ -107,14 +112,24 @@ function mockAllTools(overrides?: Partial<Record<string, "builtin" | "extension"
 		"check-workflow-deps": "extension",
 		cymbal: "extension",
 	};
-	const final: Record<string, "builtin" | "extension"> = { ...defaults, ...overrides };
-	return Object.entries(final).map(([name, source]) => ({
-		name,
-		sourceInfo: {
-			source,
-			path: source === "extension" ? `pi-fff:${name}` : `<builtin:${name}>`,
-		},
-	}));
+	const final: Record<string, ToolSource> = { ...defaults, ...overrides };
+	return Object.entries(final).map(([name, source]) => {
+		let path: string;
+		if (source === "builtin") {
+			path = `<builtin:${name}>`;
+		} else if (provenance === "other") {
+			path = `some-other-extension:/path/to/${name}.ts`;
+		} else {
+			// FFF provenance: npm @ff-labs/pi-fff or git dmtrKovalenko/fff
+			path = name === "find" || name === "grep"
+				? process.env.MOCK_FFF_PATH ?? `@ff-labs/pi-fff/src/${name}.ts`
+				: `pi-fff:${name}`;
+		}
+		return {
+			name,
+			sourceInfo: { source, path, scope: source === "builtin" ? "temporary" : "user", origin: source === "builtin" ? "top-level" : "package" },
+		};
+	});
 }
 
 type ExecCall = { command: string; args: string[] };
@@ -123,6 +138,7 @@ function registered(
 	spawn: SpawnProcess,
 	execCheck?: ExecCheck,
 	allTools: MockToolEntry[] = mockAllTools(),
+	activeTools?: string[],
 ): {
 	subagent: Tool;
 	checkDeps: Tool | undefined;
@@ -131,6 +147,7 @@ function registered(
 } {
 	const tools: Tool[] = [];
 	const execCalls: ExecCall[] = [];
+	const active = activeTools ?? allTools.map((t) => t.name);
 	const mockPi = {
 		on() {},
 		registerTool(definition: unknown) {
@@ -138,6 +155,9 @@ function registered(
 		},
 		getAllTools() {
 			return allTools;
+		},
+		getActiveTools() {
+			return [...active];
 		},
 		exec(command: string, args: string[], options?: { signal?: AbortSignal }) {
 			execCalls.push({ command, args: [...args] });
@@ -322,103 +342,189 @@ describe("check-workflow-deps tool", () => {
 		} else {
 			process.env.PI_FFF_MODE = savedEnv;
 		}
+		delete process.env.MOCK_FFF_PATH;
 	});
 
-	it("passes when PI_FFF_MODE=override, find/grep are FFF extensions, and cymbal is available", async () => {
+	it("passes when PI_FFF_MODE=override, find/grep active FFF, and cymbal available", async () => {
 		process.env.PI_FFF_MODE = "override";
 		const execCheck = fakeExecCheck((cmd, args) => {
 			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
 			return {};
 		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "extension", grep: "extension" }));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
 		const result = await execute(checkDeps, {});
-		assert.equal(result.isError, false);
+		// Must not be isError (throwing is the error signaling mechanism)
+		assert.equal(result.isError, undefined, "success must not set isError");
 		assert.match(text(result), /✓ PI_FFF_MODE=override/);
 		assert.match(text(result), /✓ FFF find override active/);
 		assert.match(text(result), /✓ FFF grep override active/);
 		assert.match(text(result), /✓ Cymbal: cymbal v0.14.0/);
 	});
 
-	it("fails when PI_FFF_MODE is not override", async () => {
+	it("throws when PI_FFF_MODE is not override", async () => {
 		delete process.env.PI_FFF_MODE;
-		const execCheck = fakeExecCheck((cmd, args) => {
-			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
-			return {};
-		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "extension", grep: "extension" }));
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
-		const result = await execute(checkDeps, {});
-		assert.equal(result.isError, true);
-		assert.match(text(result), /PI_FFF_MODE is not set/);
-		assert.match(text(result), /✓ FFF find override active/);
-		assert.match(text(result), /✓ Cymbal/);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/PI_FFF_MODE is not set/,
+		);
 	});
 
-	it("fails when find is not an FFF override (builtin source)", async () => {
+	it("throws when find is not active", async () => {
 		process.env.PI_FFF_MODE = "override";
-		const execCheck = fakeExecCheck((cmd, args) => {
-			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
-			return {};
-		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "builtin", grep: "extension" }));
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
-		const result = await execute(checkDeps, {});
-		assert.equal(result.isError, true);
-		assert.match(text(result), /'find' is not an FFF override/);
-		assert.match(text(result), /✓ FFF grep override active/);
-		assert.match(text(result), /✓ Cymbal/);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/'find' is not active/,
+		);
 	});
 
-	it("fails when grep is not an FFF override (builtin source)", async () => {
+	it("throws when grep is not active", async () => {
 		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/'grep' is not active/,
+		);
+	});
+
+	it("throws when find is builtin (not FFF)", async () => {
+		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "builtin", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/'find' is not the pi-fff FFF override/,
+		);
+	});
+
+	it("throws when grep is builtin (not FFF)", async () => {
+		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "builtin" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/'grep' is not the pi-fff FFF override/,
+		);
+	});
+
+	it("throws when find/grep are provided by an unrelated extension", async () => {
+		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck(() => ({}));
+		// Unrelated extension providing find/grep (not FFF)
+		const tools = mockAllTools({ find: "extension", grep: "extension" }, "other");
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/'find' is not the pi-fff FFF override/,
+		);
+	});
+
+	it("accepts npm @ff-labs/pi-fff provenance", async () => {
+		process.env.PI_FFF_MODE = "override";
+		process.env.MOCK_FFF_PATH = "node_modules/@ff-labs/pi-fff/src/index.ts";
 		const execCheck = fakeExecCheck((cmd, args) => {
 			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
 			return {};
 		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "extension", grep: "builtin" }));
+		const tools = mockAllTools({ find: "extension", grep: "extension" }, "fff");
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
 		const result = await execute(checkDeps, {});
-		assert.equal(result.isError, true);
+		assert.equal(result.isError, undefined);
 		assert.match(text(result), /✓ FFF find override active/);
-		assert.match(text(result), /'grep' is not an FFF override/);
-		assert.match(text(result), /✓ Cymbal/);
 	});
 
-	it("fails when cymbal command fails", async () => {
+	it("accepts git dmtrKovalenko/fff provenance", async () => {
+		process.env.PI_FFF_MODE = "override";
+		process.env.MOCK_FFF_PATH = ".pi/agent/git/github.com/dmtrKovalenko/fff/src/index.ts";
+		const execCheck = fakeExecCheck((cmd, args) => {
+			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
+			return {};
+		});
+		const tools = mockAllTools({ find: "extension", grep: "extension" }, "fff");
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		const result = await execute(checkDeps, {});
+		assert.equal(result.isError, undefined);
+		assert.match(text(result), /✓ FFF find override active/);
+	});
+
+	it("throws when cymbal command fails, preserving stderr", async () => {
 		process.env.PI_FFF_MODE = "override";
 		const execCheck = fakeExecCheck((cmd, args) => {
 			if (cmd === "cymbal") return { stdout: "", stderr: "command not found", exitCode: 127 };
 			return {};
 		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "extension", grep: "extension" }));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
-		const result = await execute(checkDeps, {});
-		assert.equal(result.isError, true);
-		assert.match(text(result), /✓ FFF find override active/);
-		assert.match(text(result), /✓ FFF grep override active/);
-		assert.match(text(result), /Cymbal not found/);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/Cymbal not found/,
+		);
 	});
 
-	it("reports installation guidance for missing FFF tools and Cymbal", async () => {
-		delete process.env.PI_FFF_MODE;
+	it("refers to correct FFF URL (dmtrKovalenko/fff)", async () => {
+		process.env.PI_FFF_MODE = "override";
 		const execCheck = fakeExecCheck((cmd, args) => {
-			if (cmd === "cymbal") return { stdout: "", stderr: "command not found", exitCode: 127 };
+			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
 			return {};
 		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "builtin", grep: "builtin" }));
+		// Force a failure to see the URL
+		const tools = mockAllTools({ find: "builtin", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
-		const result = await execute(checkDeps, {});
-		assert.equal(result.isError, true);
-		assert.match(text(result), /PI_FFF_MODE is not set/);
-		assert.match(text(result), /'find' is not an FFF override/);
-		assert.match(text(result), /'grep' is not an FFF override/);
-		assert.match(text(result), /Cymbal not found/);
-		assert.match(text(result), /github.com/);
-		assert.match(text(result), /npm install/);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/github\.com\/dmtrKovalenko\/fff/,
+		);
 	});
 
-	it("invokes cymbal version via execCheck", async () => {
+	it("refers to correct Cymbal URL (1broseidon/cymbal)", async () => {
+		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck((cmd, args) => {
+			if (cmd === "cymbal") return { stdout: "", stderr: "not found", exitCode: 1 };
+			return {};
+		});
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/github\.com\/1broseidon\/cymbal/,
+		);
+	});
+
+	it("invokes cymbal version via execCheck exactly once", async () => {
 		process.env.PI_FFF_MODE = "override";
 		const execCalls: Array<{ command: string; args: string[] }> = [];
 		const execCheck = fakeExecCheck((cmd, args) => {
@@ -426,7 +532,9 @@ describe("check-workflow-deps tool", () => {
 			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
 			return {};
 		});
-		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, mockAllTools({ find: "extension", grep: "extension" }));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
 		assert.ok(checkDeps);
 		await execute(checkDeps, {});
 		assert.equal(execCalls.length, 1);
@@ -445,38 +553,43 @@ describe("cymbal tool", () => {
 		const execCheck = fakeExecCheck(() => ({ stdout: "ok" }));
 		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
 		assert.ok(cymbal);
-		for (const cmd of CYMNAL_COMMANDS) {
+		for (const cmd of CYMBAL_COMMANDS) {
 			const result = await execute(cymbal, { command: cmd });
-			assert.equal(result.isError ?? false, false, `${cmd} should not error`);
+			assert.equal(result.isError, undefined, `${cmd} must not set isError`);
 			assert.match(text(result), /ok/);
 		}
 	});
 
-	it("rejects invalid cymbal commands", async () => {
+	it("throws for invalid cymbal commands (not isError)", async () => {
 		const execCheck = fakeExecCheck(() => ({ stdout: "should not run" }));
 		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
 		assert.ok(cymbal);
-		const result = await execute(cymbal, { command: "install" });
-		assert.equal(result.isError, true);
-		assert.match(text(result), /Invalid cymbal command/);
+		await assert.rejects(
+			() => execute(cymbal, { command: "install" }),
+			/Invalid cymbal command/,
+		);
 	});
 
-	it("rejects mutating cymbal commands", async () => {
+	it("throws for known-bad mutating commands", async () => {
 		const { cymbal } = registered(fakeSpawn().spawn);
 		assert.ok(cymbal);
 		for (const bad of ["index", "hook", "completion", "help"]) {
-			const result = await execute(cymbal, { command: bad });
-			assert.equal(result.isError, true, `${bad} should be rejected`);
+			await assert.rejects(
+				() => execute(cymbal, { command: bad }),
+				/Invalid cymbal command/,
+				`${bad} should throw`,
+			);
 		}
 	});
 
-	it("reports non-zero exit as tool error", async () => {
-		const execCheck = fakeExecCheck(() => ({ stdout: "", stderr: "not found", exitCode: 1 }));
+	it("throws for non-zero exit with stderr preserved", async () => {
+		const execCheck = fakeExecCheck(() => ({ stdout: "", stderr: "not found\nUsage: cymbal show <path>", exitCode: 1 }));
 		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
 		assert.ok(cymbal);
-		const result = await execute(cymbal, { command: "show", args: ["unknown"] });
-		assert.equal(result.isError, true);
-		assert.match(text(result), /not found/);
+		await assert.rejects(
+			() => execute(cymbal, { command: "show", args: ["unknown"] }),
+			/not found/,
+		);
 	});
 
 	it("passes command arguments through", async () => {
@@ -491,18 +604,19 @@ describe("cymbal tool", () => {
 		assert.deepEqual(execCalls[0].args, ["show", "src/main.ts"]);
 	});
 
-	it("propagates cancellation", async () => {
+	it("throws on cancellation (aborted signal)", async () => {
 		const execCheck = fakeExecCheck(() => ({ stdout: "should not complete" }));
 		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
 		assert.ok(cymbal);
 		const controller = new AbortController();
 		controller.abort();
-		const result = await execute(cymbal, { command: "version" }, controller.signal);
-		// Tool catches the abort error from pi.exec and reports isError
-		assert.equal(result.isError, true, "aborted cymbal should be an error");
+		await assert.rejects(
+			() => execute(cymbal, { command: "version" }, controller.signal),
+			/cymbal execution aborted/,
+		);
 	});
 
-	it("truncates oversized output at 50KB cap", async () => {
+	it("truncates oversized output at 50KB cap and returns full output in details", async () => {
 		const largeOutput = "x".repeat(60 * 1024);
 		const execCheck = fakeExecCheck(() => ({ stdout: largeOutput }));
 		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
@@ -510,5 +624,10 @@ describe("cymbal tool", () => {
 		const result = await execute(cymbal, { command: "structure" });
 		assert.ok(Buffer.byteLength(text(result), "utf8") < 55 * 1024);
 		assert.match(text(result), /Output truncated/);
+		// Full untruncated output preserved in details
+		assert.ok(result.details, "details must exist for truncated output");
+		const fullOutput = (result.details as Record<string, unknown>).fullOutput as string | undefined;
+		assert.ok(fullOutput, "details.fullOutput must exist");
+		assert.equal(fullOutput, largeOutput, "full output must be untruncated");
 	});
 });
