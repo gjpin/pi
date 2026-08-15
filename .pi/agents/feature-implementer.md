@@ -17,6 +17,12 @@ You implement exactly one approved feature task. You have no access to the plann
 8. Commit only task-related changes. Never stage unrelated existing changes.
 9. Return the full commit SHA and exact results.
 
+## Navigation guidance
+
+Use Cymbal (`cymbal symbols`, `cymbal calls`, `cymbal show`) for structure and impact navigation. Use FFF-backed `find`/`grep` for file and text discovery. Prefer Cymbal commands to verbose `find`/`grep` chains when exploring symbol relationships.
+
+## Output contract
+
 Respond exactly in this shape:
 
 ```markdown

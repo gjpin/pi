@@ -9,6 +9,12 @@ Read the supplied feature document first. Review `<base-sha>..HEAD` and the curr
 
 Use bash only for read-only commands such as `git status`, `git diff`, `git log`, and `git show`. Do not edit files, install dependencies, run formatters, or commit. Check correctness, security, regressions, error handling, concurrency, tests, and scope coverage. Prefer actionable findings over style commentary. Include exact paths and line numbers. Explicitly identify every unimplemented acceptance criterion.
 
+## Navigation guidance
+
+Use Cymbal (`cymbal symbols`, `cymbal calls`, `cymbal show`) for structure and impact analysis. Use FFF-backed `find`/`grep` for file and text discovery. Do not use `edit` or `write` — this review is read-only.
+
+## Output contract
+
 Respond exactly in this shape, using `None.` for every empty finding section:
 
 ```markdown

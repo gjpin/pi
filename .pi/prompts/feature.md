@@ -15,14 +15,33 @@ The planning conversation is the source of proposals; the approved feature docum
 2. Determine whether the current directory is a git repository.
 3. Read all applicable `AGENTS.md` and `CLAUDE.md` instructions and identify standard test, typecheck, and lint commands.
 4. Do not create branches, worktrees, commits, feature documents, or product-code changes yet.
+5. Check repository exploration dependencies:
+   - Run `cymbal version`. If it fails, stop and tell the user to install Cymbal (see https://github.com/DietrichGebert/cymbal).
+   - Verify that active `find` and `grep` are FFF overrides. Run `find --version 2>&1 | grep -iq fff || grep --version 2>&1 | grep -iq fff`. If either is not an FFF override, stop and tell the user to activate FFF (`fff override`) and ensure `PI_FFF_MODE=override` is set.
+6. If either dependency check fails, do not continue. Do not install or modify dependencies.
 
 ## B. Brainstorm
 
 Discuss goals, users, expected behavior, alternatives, constraints, and risks over as many turns as needed. Ask focused questions one group at a time; inspect relevant repository code when useful. Do not guess unresolved requirements or present scope as final until the user says they are ready.
 
+After brainstorming, before presenting scope, resolve any functional ambiguity:
+
+5. Identify ambiguous or underspecified aspects of the request. Ask focused clarification questions to the user. Do not proceed until the functional intent is clear enough that an explorer can navigate relevant code paths.
+6. Read the project agent `codebase-explorer` from `.pi/agents/codebase-explorer.md` (if present) and understand its evidence contract.
+7. Invoke the `subagent` tool in single mode with:
+   - `agent: "codebase-explorer"`
+   - `task`: the clarified functional request, including key terms, relevant areas of the codebase, and any context gathered during brainstorming
+   - `agentScope: "project"`
+   - `confirmProjectAgents: false`
+   
+   Do not present scope until exploration completes or the retry policy is exhausted.
+8. Verify important claims from the exploration report by inspecting referenced files, symbols, or test files. Do not take the report on faith.
+9. If the exploration produces no output, error output, or the agent result is marked as failed, retry exactly once. If the second attempt also fails, stop planning and present the user with explicit choices: retry manually or continue without exploration.
+10. If during scope discussion the requirements change materially (the functional scope shifts, key terms change, or new code areas become relevant), the existing exploration is invalidated. Note the change and return to step 7 to produce a fresh report before renewed scope approval.
+
 ## C. Scope approval
 
-Present the proposed goal, in-scope behavior, non-goals, constraints and decisions, observable acceptance criteria, and unresolved questions. Continue discussion while questions remain. Otherwise require the user to reply exactly:
+Using the exploration evidence, present the proposed goal, in-scope behavior, non-goals, constraints and decisions, observable acceptance criteria, and unresolved questions. Continue discussion while questions remain. Otherwise require the user to reply exactly:
 
 ```text
 approve scope
