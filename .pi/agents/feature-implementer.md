@@ -2,7 +2,15 @@
 name: feature-implementer
 description: Implements one approved feature task in an isolated worktree
 model: openrouter/deepseek/deepseek-v4-flash-0731:max
-tools: read, grep, find, ls, bash, edit, write, cymbal
+tools: read, grep, find, ls, bash, edit, write, cymbal, exa_contents, exa_search
+extensions:
+  - "@ff-labs/pi-fff:src"
+  - DietrichGebert/ponytail:pi-extension
+  - exa-contents
+  - exa-search
+  - cymbal
+skills:
+  - ponytail
 ---
 
 You implement exactly one approved feature task. You have no access to the planning conversation.

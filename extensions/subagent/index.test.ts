@@ -94,7 +94,46 @@ type MockToolEntry = {
 	sourceInfo: { source: string; path?: string; scope?: string; origin?: string };
 };
 
+type MockCommandEntry = {
+	name: string;
+	description?: string;
+	source: string;
+	sourceInfo: { source: string; path: string };
+};
+
 type ToolSource = "builtin" | "extension" | "sdk";
+
+// Parent-loaded resource paths, matching the checked-in roles and launch docs.
+const FFF_EXTENSION_PATH = "node_modules/@ff-labs/pi-fff/src/index.ts";
+const CYMBAL_EXTENSION_PATH = "extensions/cymbal/index.ts";
+const SUBAGENT_EXTENSION_PATH = "extensions/subagent/index.ts";
+const EXA_CONTENTS_EXTENSION_PATH = "extensions/exa-contents/index.ts";
+const EXA_SEARCH_EXTENSION_PATH = "extensions/exa-search/index.ts";
+const PONYTAIL_EXTENSION_PATH = ".pi/agent/git/github.com/DietrichGebert/ponytail/pi-extension/index.ts";
+const PONYTAIL_SKILL_PATH = ".pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail/SKILL.md";
+const PONYTAIL_REVIEW_SKILL_PATH = ".pi/agent/git/github.com/DietrichGebert/ponytail/skills/ponytail-review/SKILL.md";
+
+/** Parent-loaded commands: the command-only Ponytail extension plus its skills. */
+const COMMANDS: MockCommandEntry[] = [
+	{
+		name: "ponytail",
+		description: "Apply the laziest solution",
+		source: "extension",
+		sourceInfo: { source: "extension", path: PONYTAIL_EXTENSION_PATH },
+	},
+	{
+		name: "skill:ponytail",
+		description: "Ponytail skill",
+		source: "skill",
+		sourceInfo: { source: "local", path: PONYTAIL_SKILL_PATH },
+	},
+	{
+		name: "skill:ponytail-review",
+		description: "Ponytail review skill",
+		source: "skill",
+		sourceInfo: { source: "local", path: PONYTAIL_REVIEW_SKILL_PATH },
+	},
+];
 
 function mockAllTools(
 	overrides?: Partial<Record<string, ToolSource>>,
@@ -106,28 +145,37 @@ function mockAllTools(
 		write: "builtin",
 		edit: "builtin",
 		ls: "builtin",
-		find: "builtin",
-		grep: "builtin",
+		// pi-fff FFF find/grep overrides are loaded in the parent launch.
+		find: "extension",
+		grep: "extension",
 		subagent: "extension",
 		"check-workflow-deps": "extension",
 		cymbal: "extension",
+		exa_contents: "extension",
+		exa_search: "extension",
 	};
 	const final: Record<string, ToolSource> = { ...defaults, ...overrides };
 	return Object.entries(final).map(([name, source]) => {
 		let path: string;
 		if (source === "builtin") {
 			path = `<builtin:${name}>`;
+		} else if (provenance === "other") {
+			path = `some-other-fff-extension:/path/to/${name}.ts`;
 		} else if (name === "cymbal") {
 			// Independent Cymbal extension provenance; override to simulate the
 			// tool being provided by the subagent extension instead.
-			path = process.env.MOCK_CYMBAL_PATH ?? "extensions/cymbal/index.ts";
-		} else if (provenance === "other") {
-			path = `some-other-fff-extension:/path/to/${name}.ts`;
+			path = process.env.MOCK_CYMBAL_PATH ?? CYMBAL_EXTENSION_PATH;
+		} else if (name === "find" || name === "grep") {
+			// pi-fff FFF extension entry point, shared by find and grep.
+			path = process.env.MOCK_FFF_PATH ?? FFF_EXTENSION_PATH;
+		} else if (name === "subagent" || name === "check-workflow-deps") {
+			path = SUBAGENT_EXTENSION_PATH;
+		} else if (name === "exa_contents") {
+			path = EXA_CONTENTS_EXTENSION_PATH;
+		} else if (name === "exa_search") {
+			path = EXA_SEARCH_EXTENSION_PATH;
 		} else {
-			// FFF provenance: npm @ff-labs/pi-fff or git dmtrKovalenko/fff
-			path = name === "find" || name === "grep"
-				? process.env.MOCK_FFF_PATH ?? `@ff-labs/pi-fff/src/${name}.ts`
-				: `pi-fff:${name}`;
+			path = `extension:${name}`;
 		}
 		return {
 			name,
@@ -143,6 +191,7 @@ function registered(
 	execCheck?: ExecCheck,
 	allTools: MockToolEntry[] = mockAllTools(),
 	activeTools?: string[],
+	commands: MockCommandEntry[] = COMMANDS,
 ): {
 	subagent: Tool;
 	checkDeps: Tool | undefined;
@@ -164,7 +213,7 @@ function registered(
 			return [...active];
 		},
 		getCommands() {
-			return [];
+			return commands;
 		},
 		exec(command: string, args: string[], options?: { signal?: AbortSignal }) {
 			execCalls.push({ command, args: [...args] });
@@ -276,12 +325,48 @@ describe("subagent tool", () => {
 		assert.equal(fake.calls[0].args.includes("--no-session"), true);
 		assert.equal(fake.calls[0].args.includes("--no-extensions"), true);
 		assert.equal(fake.calls[0].args.includes("--no-skills"), true);
-		// Absent extensions/skills lists mean no resources: the child gets no
-		// explicit --extension/--skill flags and the subagent extension is never
-		// added implicitly.
-		assert.equal(fake.calls[0].args.includes("--extension"), false);
-		assert.equal(fake.calls[0].args.includes("--skill"), false);
+		// The reviewer selects pi-fff + cymbal extensions and the ponytail-review
+		// skill: the child receives exactly those resolved paths, and the subagent
+		// extension is never added implicitly.
+		const extensionFlags: string[] = [];
+		const skillFlags: string[] = [];
+		for (let i = 0; i < fake.calls[0].args.length; i++) {
+			if (fake.calls[0].args[i] === "--extension") extensionFlags.push(fake.calls[0].args[i + 1]);
+			if (fake.calls[0].args[i] === "--skill") skillFlags.push(fake.calls[0].args[i + 1]);
+		}
+		assert.deepEqual(extensionFlags, [FFF_EXTENSION_PATH, CYMBAL_EXTENSION_PATH]);
+		assert.deepEqual(skillFlags, [PONYTAIL_REVIEW_SKILL_PATH]);
+		assert.equal(extensionFlags.includes(SUBAGENT_EXTENSION_PATH), false);
 		assert.equal(fake.calls[0].env?.PI_FFF_MODE, "override");
+	});
+
+	it("spawns feature-implementer with the full approved resource matrix", async () => {
+		const fake = fakeSpawn();
+		const { subagent: tool } = registered(fake.spawn);
+		const result = await execute(tool, {
+			agent: "feature-implementer",
+			task: "implement",
+			agentScope: "project",
+		});
+		assert.equal(result.isError, undefined, "single-mode success sets no isError");
+		assert.equal(fake.calls.length, 1);
+		const extensionFlags: string[] = [];
+		const skillFlags: string[] = [];
+		for (let i = 0; i < fake.calls[0].args.length; i++) {
+			if (fake.calls[0].args[i] === "--extension") extensionFlags.push(fake.calls[0].args[i + 1]);
+			if (fake.calls[0].args[i] === "--skill") skillFlags.push(fake.calls[0].args[i + 1]);
+		}
+		assert.deepEqual(extensionFlags, [
+			FFF_EXTENSION_PATH,
+			PONYTAIL_EXTENSION_PATH,
+			EXA_CONTENTS_EXTENSION_PATH,
+			EXA_SEARCH_EXTENSION_PATH,
+			CYMBAL_EXTENSION_PATH,
+		]);
+		assert.deepEqual(skillFlags, [PONYTAIL_SKILL_PATH]);
+		const toolsIndex = fake.calls[0].args.indexOf("--tools");
+		assert.match(fake.calls[0].args[toolsIndex + 1], /exa_contents/);
+		assert.match(fake.calls[0].args[toolsIndex + 1], /exa_search/);
 	});
 
 	it("surfaces non-zero exits, spawn errors, and missing final output", async () => {

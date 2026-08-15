@@ -3,6 +3,11 @@ name: feature-reviewer
 description: Reviews an integrated feature against its approved scope and base revision
 tools: read, grep, find, ls, bash, cymbal
 model: openai-codex/gpt-5.6-luna:xhigh
+extensions:
+  - "@ff-labs/pi-fff:src"
+  - cymbal
+skills:
+  - ponytail-review
 ---
 
 Read the supplied feature document first. Review `<base-sha>..HEAD` and the current integrated files against the approved scope and every acceptance criterion.

@@ -73,14 +73,15 @@ describe("formatAgentList", () => {
 	});
 });
 
+// Read the checked-in resource once (module scope so every describe can use it)
+async function readExplorer(): Promise<{ frontmatter: Record<string, string>; body: string }> {
+	const root = resolve(import.meta.dirname, "../..");
+	return parseFrontmatter<Record<string, string>>(
+		await readFile(join(root, ".pi/agents/codebase-explorer.md"), "utf8"),
+	);
+}
+
 describe("codebase-explorer", () => {
-	// Read the checked-in resource once
-	async function readExplorer(): Promise<{ frontmatter: Record<string, string>; body: string }> {
-		const root = resolve(import.meta.dirname, "../..");
-		return parseFrontmatter<Record<string, string>>(
-			await readFile(join(root, ".pi/agents/codebase-explorer.md"), "utf8"),
-		);
-	}
 
 	it("is discoverable among project agents with the checked-in resource", async () => {
 		const { agents, nested } = await project();
@@ -321,5 +322,100 @@ describe("feature resources", () => {
 		assert.match(prompt.body, /do not duplicate/);
 		assert.match(prompt.body, /prescribe line-by-line/);
 		assert.match(prompt.body, /dictate mechanics/);
+	});
+});
+
+describe("checked-in role resource matrix", () => {
+	it("codebase-explorer selects pi-fff and cymbal extensions, no skills, read-only tools", async () => {
+		const checked = await readExplorer();
+		assert.deepEqual(checked.frontmatter.extensions, ["@ff-labs/pi-fff:src", "cymbal"]);
+		assert.equal(checked.frontmatter.skills, undefined);
+		const tools = (checked.frontmatter.tools || "").split(/,\s*/);
+		assert.deepEqual(tools, ["read", "grep", "find", "ls", "cymbal"]);
+		assert.equal(tools.includes("exa_contents"), false, "explorer must not get exa tools");
+		assert.equal(tools.includes("exa_search"), false, "explorer must not get exa tools");
+	});
+
+	it("feature-implementer selects the full approved matrix with exa tools and ponytail skill", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const implementer = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/agents/feature-implementer.md"), "utf8"),
+		);
+		assert.deepEqual(implementer.frontmatter.extensions, [
+			"@ff-labs/pi-fff:src",
+			"DietrichGebert/ponytail:pi-extension",
+			"exa-contents",
+			"exa-search",
+			"cymbal",
+		]);
+		assert.deepEqual(implementer.frontmatter.skills, ["ponytail"]);
+		const tools = (implementer.frontmatter.tools || "").split(/,\s*/);
+		assert.deepEqual(tools, [
+			"read",
+			"grep",
+			"find",
+			"ls",
+			"bash",
+			"edit",
+			"write",
+			"cymbal",
+			"exa_contents",
+			"exa_search",
+		]);
+	});
+
+	it("feature-reviewer selects pi-fff and cymbal extensions with ponytail-review skill and stays read-only", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const reviewer = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/agents/feature-reviewer.md"), "utf8"),
+		);
+		assert.deepEqual(reviewer.frontmatter.extensions, ["@ff-labs/pi-fff:src", "cymbal"]);
+		assert.deepEqual(reviewer.frontmatter.skills, ["ponytail-review"]);
+		const tools = (reviewer.frontmatter.tools || "").split(/,\s*/);
+		assert.deepEqual(tools, ["read", "grep", "find", "ls", "bash", "cymbal"]);
+		assert.equal(tools.includes("exa_contents"), false, "reviewer must not get exa tools");
+		assert.equal(tools.includes("exa_search"), false, "reviewer must not get exa tools");
+	});
+
+	it("all three checked-in roles parse cleanly through discoverAgents with exact resources", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const found = discoverAgents(root, "project");
+		const byName = new Map(found.agents.map((a) => [a.name, a]));
+		const explorer = byName.get("codebase-explorer");
+		const implementer = byName.get("feature-implementer");
+		const reviewer = byName.get("feature-reviewer");
+		assert.ok(explorer, "codebase-explorer must be discovered from the checked-in .pi/agents");
+		assert.ok(implementer, "feature-implementer must be discovered from the checked-in .pi/agents");
+		assert.ok(reviewer, "feature-reviewer must be discovered from the checked-in .pi/agents");
+		for (const agent of [explorer!, implementer!, reviewer!]) {
+			assert.equal(agent.resourceErrors, undefined, `${agent.name} must parse without resource errors`);
+			assert.equal(agent.source, "project");
+		}
+		assert.deepEqual(explorer!.extensions, ["@ff-labs/pi-fff:src", "cymbal"]);
+		assert.equal(explorer!.skills, undefined);
+		assert.deepEqual(explorer!.tools, ["read", "grep", "find", "ls", "cymbal"]);
+		assert.deepEqual(implementer!.extensions, [
+			"@ff-labs/pi-fff:src",
+			"DietrichGebert/ponytail:pi-extension",
+			"exa-contents",
+			"exa-search",
+			"cymbal",
+		]);
+		assert.deepEqual(implementer!.skills, ["ponytail"]);
+		assert.deepEqual(implementer!.tools, [
+			"read",
+			"grep",
+			"find",
+			"ls",
+			"bash",
+			"edit",
+			"write",
+			"cymbal",
+			"exa_contents",
+			"exa_search",
+		]);
+		assert.deepEqual(reviewer!.extensions, ["@ff-labs/pi-fff:src", "cymbal"]);
+		assert.deepEqual(reviewer!.skills, ["ponytail-review"]);
+		assert.deepEqual(reviewer!.tools, ["read", "grep", "find", "ls", "bash", "cymbal"]);
 	});
 });

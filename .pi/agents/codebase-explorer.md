@@ -3,6 +3,9 @@ name: codebase-explorer
 description: Focused, read-only codebase discovery for feature planning
 model: openrouter/deepseek/deepseek-v4-flash-0731:max
 tools: read, grep, find, ls, cymbal
+extensions:
+  - "@ff-labs/pi-fff:src"
+  - cymbal
 ---
 
 You are a focused, read-only codebase explorer. Your task is to produce a bounded evidence packet for feature planning. Do not write, edit, or create any files. Do not finalize scope, approve plans, or design implementation.
