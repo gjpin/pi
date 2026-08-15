@@ -40,6 +40,222 @@ const EXTENSION_PATH = fileURLToPath(import.meta.url);
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
+/**
+ * Parent-loaded extension resource, keyed by the provenance path reported by
+ * the parent runtime (the same path is shared by every tool and command an
+ * extension registers, so it identifies the extension entry point).
+ */
+export interface ExtensionCatalogEntry {
+	path: string;
+	source: string;
+}
+
+/** Parent-loaded skill resource, resolved by exact parent-loaded name. */
+export interface SkillCatalogEntry {
+	name: string;
+	path: string;
+}
+
+const SCHEME_PREFIX = /^(npm|git|https?):/;
+
+/**
+ * Build the available extension catalog from parent-loaded tool and
+ * extension-command provenance so command-only extensions (such as Ponytail)
+ * are included. Builtin tools are never candidates.
+ */
+export function buildExtensionCatalog(pi: ExtensionAPI): ExtensionCatalogEntry[] {
+	const seen = new Map<string, ExtensionCatalogEntry>();
+	const add = (path: string | undefined, source: string) => {
+		if (!path) return;
+		if (!seen.has(path)) seen.set(path, { path, source });
+	};
+	for (const tool of pi.getAllTools()) {
+		if (tool.sourceInfo.source === "builtin") continue;
+		add(tool.sourceInfo.path, tool.sourceInfo.source);
+	}
+	for (const cmd of pi.getCommands()) {
+		if (cmd.source !== "extension") continue;
+		add(cmd.sourceInfo.path, cmd.sourceInfo.source);
+	}
+	return [...seen.values()];
+}
+
+/** Build the skill catalog from parent-loaded skill commands. */
+export function buildSkillCatalog(pi: ExtensionAPI): SkillCatalogEntry[] {
+	const seen = new Map<string, SkillCatalogEntry>();
+	for (const cmd of pi.getCommands()) {
+		if (cmd.source !== "skill") continue;
+		const name = cmd.name.startsWith("skill:") ? cmd.name.slice("skill:".length) : cmd.name;
+		if (!name || !cmd.sourceInfo.path) continue;
+		if (!seen.has(name)) seen.set(name, { name, path: cmd.sourceInfo.path });
+	}
+	return [...seen.values()];
+}
+
+function pathParts(p: string): string[] {
+	return p.replace(/\\/g, "/").split("/").filter(Boolean);
+}
+
+function indexOfSequence(haystack: string[], needle: string[]): number {
+	if (needle.length === 0) return -1;
+	for (let i = 0; i + needle.length <= haystack.length; i++) {
+		let match = true;
+		for (let j = 0; j < needle.length; j++) {
+			if (haystack[i + j] !== needle[j]) {
+				match = false;
+				break;
+			}
+		}
+		if (match) return i;
+	}
+	return -1;
+}
+
+/** Unique local name of an extension entry (directory before index, or file stem). */
+export function localExtensionName(entryPath: string): string {
+	const parts = pathParts(entryPath);
+	let last = parts[parts.length - 1] ?? "";
+	last = last.replace(/\.(ts|js|mjs|cjs|tsx|jsx|mts|cts)$/i, "");
+	if ((last === "index" || last === "") && parts.length >= 2) last = parts[parts.length - 2];
+	return last;
+}
+
+export interface ParsedExtensionSelector {
+	packagePart?: string;
+	subpath?: string;
+	localName?: string;
+	error?: string;
+}
+
+/**
+ * Parse a Pi-style package selector (`@ff-labs/pi-fff:src`, `DietrichGebert/ponytail:pi-extension`,
+ * or a bare package like `npm:@ff-labs/pi-fff`) or a unique local extension name (`cymbal`, `exa-search`).
+ */
+export function parseExtensionSelector(selector: string): ParsedExtensionSelector {
+	if (!selector || selector.trim() === "") return { error: "Empty extension selector" };
+	const raw = selector.trim();
+	const schemeMatch = SCHEME_PREFIX.exec(raw);
+	const body = schemeMatch ? raw.slice(schemeMatch[0].length) : raw;
+	if (body === "") return { error: `Malformed extension selector "${selector}"` };
+	const colon = body.indexOf(":");
+	if (colon === -1) {
+		if (schemeMatch) return { packagePart: body };
+		return { localName: body };
+	}
+	const packagePart = body.slice(0, colon);
+	const subpath = body.slice(colon + 1);
+	if (!packagePart || !subpath) return { error: `Malformed extension selector "${selector}"` };
+	return { packagePart, subpath };
+}
+
+function matchesExtensionEntry(entry: ExtensionCatalogEntry, parsed: ParsedExtensionSelector): boolean {
+	if (parsed.localName !== undefined) {
+		return localExtensionName(entry.path) === parsed.localName;
+	}
+	if (parsed.packagePart === undefined) return false;
+	const parts = pathParts(entry.path);
+	const pkgParts = pathParts(parsed.packagePart);
+	const start = indexOfSequence(parts, pkgParts);
+	if (start === -1) return false;
+	if (parsed.subpath === undefined) return true;
+	return indexOfSequence(parts.slice(start + pkgParts.length), pathParts(parsed.subpath)) !== -1;
+}
+
+/**
+ * Resolve extension selectors against the parent-loaded catalog. Missing or
+ * ambiguous selectors produce explicit errors instead of a guess.
+ */
+export function resolveExtensionSelectors(
+	selectors: string[] | undefined,
+	catalog: ExtensionCatalogEntry[],
+): { paths: string[]; errors: string[] } {
+	if (!selectors || selectors.length === 0) return { paths: [], errors: [] };
+	const available = catalog.map((e) => localExtensionName(e.path)).join(", ") || "none";
+	const paths: string[] = [];
+	const errors: string[] = [];
+	for (const selector of selectors) {
+		const parsed = parseExtensionSelector(selector);
+		if (parsed.error) {
+			errors.push(parsed.error);
+			continue;
+		}
+		const matches = catalog.filter((entry) => matchesExtensionEntry(entry, parsed));
+		if (matches.length === 0) {
+			errors.push(`Unknown extension "${selector}". Available extensions: ${available}.`);
+		} else if (matches.length > 1) {
+			errors.push(`Ambiguous extension "${selector}": matches ${matches.map((m) => m.path).join(", ")}.`);
+		} else if (!paths.includes(matches[0].path)) {
+			paths.push(matches[0].path);
+		}
+	}
+	return { paths, errors };
+}
+
+/** Resolve skill names against the parent-loaded skill catalog by exact name. */
+export function resolveSkillSelectors(
+	selectors: string[] | undefined,
+	catalog: SkillCatalogEntry[],
+): { paths: string[]; errors: string[] } {
+	if (!selectors || selectors.length === 0) return { paths: [], errors: [] };
+	const available = catalog.map((s) => s.name).join(", ") || "none";
+	const paths: string[] = [];
+	const errors: string[] = [];
+	for (const selector of selectors) {
+		const raw = typeof selector === "string" ? selector.trim() : "";
+		const name = raw.startsWith("skill:") ? raw.slice("skill:".length) : raw;
+		if (!name) {
+			errors.push("Empty skill name.");
+			continue;
+		}
+		const matches = catalog.filter((s) => s.name === name);
+		if (matches.length === 0) {
+			errors.push(`Unknown skill "${name}". Available skills: ${available}.`);
+		} else if (matches.length > 1) {
+			errors.push(`Ambiguous skill "${name}": matches ${matches.map((m) => m.path).join(", ")}.`);
+		} else if (!paths.includes(matches[0].path)) {
+			paths.push(matches[0].path);
+		}
+	}
+	return { paths, errors };
+}
+
+export interface ResolvedAgentResources {
+	agent: AgentConfig;
+	extensions: string[];
+	skills: string[];
+}
+
+/**
+ * Validate every requested agent (existence, malformed fields, selector
+ * resolution) before any child process is spawned. Returns resolved resource
+ * paths keyed by agent name, or a complete list of pre-spawn errors.
+ */
+export function prevalidateAgents(
+	agents: AgentConfig[],
+	names: string[],
+	extensionCatalog: ExtensionCatalogEntry[],
+	skillCatalog: SkillCatalogEntry[],
+): { resolved: Map<string, ResolvedAgentResources>; errors: string[] } {
+	const errors: string[] = [];
+	const resolved = new Map<string, ResolvedAgentResources>();
+	const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
+	for (const name of names) {
+		if (resolved.has(name)) continue;
+		const agent = agents.find((a) => a.name === name);
+		if (!agent) {
+			errors.push(`Unknown agent: "${name}". Available agents: ${available}.`);
+			continue;
+		}
+		for (const err of agent.resourceErrors ?? []) errors.push(`Agent "${name}": ${err}`);
+		const ext = resolveExtensionSelectors(agent.extensions, extensionCatalog);
+		for (const err of ext.errors) errors.push(`Agent "${name}": ${err}`);
+		const sk = resolveSkillSelectors(agent.skills, skillCatalog);
+		for (const err of sk.errors) errors.push(`Agent "${name}": ${err}`);
+		resolved.set(name, { agent, extensions: ext.paths, skills: sk.paths });
+	}
+	return { resolved, errors };
+}
+
 function formatTokens(count: number): string {
 	if (count < 1000) return count.toString();
 	if (count < 10000) return `${(count / 1000).toFixed(1)}k`;
@@ -314,8 +530,8 @@ async function spawnAndCapture(
 
 async function runSingleAgent(
 	defaultCwd: string,
-	agents: AgentConfig[],
-	agentName: string,
+	agent: AgentConfig,
+	resources: { extensions: string[]; skills: string[] },
 	task: string,
 	cwd: string | undefined,
 	step: number | undefined,
@@ -324,23 +540,12 @@ async function runSingleAgent(
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
 	spawnProcess: SpawnProcess,
 ): Promise<SingleResult> {
-	const agent = agents.find((a) => a.name === agentName);
-
-	if (!agent) {
-		const available = agents.map((a) => `"${a.name}"`).join(", ") || "none";
-		return {
-			agent: agentName,
-			agentSource: "unknown",
-			task,
-			exitCode: 1,
-			messages: [],
-			stderr: `Unknown agent: "${agentName}". Available agents: ${available}.`,
-			usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 },
-			step,
-		};
-	}
-
-	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", EXTENSION_PATH];
+	// Children disable extension and skill discovery and load only the
+	// explicitly resolved resource paths. The subagent extension is never
+	// added implicitly.
+	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--no-skills"];
+	for (const extensionPath of resources.extensions) args.push("--extension", extensionPath);
+	for (const skillPath of resources.skills) args.push("--skill", skillPath);
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 
@@ -348,7 +553,7 @@ async function runSingleAgent(
 	let tmpPromptPath: string | null = null;
 
 	const currentResult: SingleResult = {
-		agent: agentName,
+		agent: agent.name,
 		agentSource: agent.source,
 		task,
 		exitCode: 0,
@@ -561,11 +766,35 @@ export function registerSubagent(
 				};
 			}
 
+			const mode: "single" | "parallel" | "chain" = hasChain ? "chain" : hasTasks ? "parallel" : "single";
+			const requestedNames: string[] = [];
+			if (params.chain) for (const step of params.chain) requestedNames.push(step.agent);
+			if (params.tasks) for (const t of params.tasks) requestedNames.push(t.agent);
+			if (params.agent) requestedNames.push(params.agent);
+
+			// Validate every requested agent (existence, field shapes, selector
+			// resolution) before any child is spawned, for all modes.
+			const preflight = prevalidateAgents(
+				agents,
+				requestedNames,
+				buildExtensionCatalog(pi),
+				buildSkillCatalog(pi),
+			);
+			if (preflight.errors.length > 0) {
+				return {
+					content: [
+						{
+							type: "text",
+							text: `Subagent configuration error:\n${preflight.errors.map((e) => `- ${e}`).join("\n")}`,
+						},
+					],
+					details: makeDetails(mode)([]),
+					isError: true,
+				};
+			}
+
 			if ((agentScope === "project" || agentScope === "both") && confirmProjectAgents && ctx.hasUI) {
-				const requestedAgentNames = new Set<string>();
-				if (params.chain) for (const step of params.chain) requestedAgentNames.add(step.agent);
-				if (params.tasks) for (const t of params.tasks) requestedAgentNames.add(t.agent);
-				if (params.agent) requestedAgentNames.add(params.agent);
+				const requestedAgentNames = new Set(requestedNames);
 
 				const projectAgentsRequested = Array.from(requestedAgentNames)
 					.map((name) => agents.find((a) => a.name === name))
@@ -592,6 +821,7 @@ export function registerSubagent(
 
 				for (let i = 0; i < params.chain.length; i++) {
 					const step = params.chain[i];
+					const resolved = preflight.resolved.get(step.agent)!;
 					const taskWithContext = step.task.replace(/\{previous\}/g, previousOutput);
 
 					// Create update callback that includes all previous results
@@ -611,8 +841,8 @@ export function registerSubagent(
 
 					const result = await runSingleAgent(
 						ctx.cwd,
-						agents,
-						step.agent,
+						resolved.agent,
+						{ extensions: resolved.extensions, skills: resolved.skills },
 						taskWithContext,
 						step.cwd,
 						i + 1,
@@ -682,10 +912,11 @@ export function registerSubagent(
 				};
 
 				const results = await mapWithConcurrencyLimit(params.tasks, MAX_CONCURRENCY, async (t, index) => {
+					const resolved = preflight.resolved.get(t.agent)!;
 					const result = await runSingleAgent(
 						ctx.cwd,
-						agents,
-						t.agent,
+						resolved.agent,
+						{ extensions: resolved.extensions, skills: resolved.skills },
 						t.task,
 						t.cwd,
 						undefined,
@@ -726,10 +957,11 @@ export function registerSubagent(
 			}
 
 			if (params.agent && params.task) {
+				const resolved = preflight.resolved.get(params.agent)!;
 				const result = await runSingleAgent(
 					ctx.cwd,
-					agents,
-					params.agent,
+					resolved.agent,
+					{ extensions: resolved.extensions, skills: resolved.skills },
 					params.task,
 					params.cwd,
 					undefined,

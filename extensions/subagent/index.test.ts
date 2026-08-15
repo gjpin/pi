@@ -163,6 +163,9 @@ function registered(
 		getActiveTools() {
 			return [...active];
 		},
+		getCommands() {
+			return [];
+		},
 		exec(command: string, args: string[], options?: { signal?: AbortSignal }) {
 			execCalls.push({ command, args: [...args] });
 			if (options?.signal?.aborted) {
@@ -257,7 +260,7 @@ describe("subagent tool", () => {
 		assert.equal(result.isError, false);
 	});
 
-	it("forwards cwd, model selector, and env while isolating child extensions", async () => {
+	it("forwards cwd, model selector, and env while isolating child resources", async () => {
 		const fake = fakeSpawn();
 		const { subagent: tool } = registered(fake.spawn);
 		await execute(tool, {
@@ -272,8 +275,12 @@ describe("subagent tool", () => {
 		assert.equal(fake.calls[0].args[modelIndex + 1], "openai-codex/gpt-5.6-luna:xhigh");
 		assert.equal(fake.calls[0].args.includes("--no-session"), true);
 		assert.equal(fake.calls[0].args.includes("--no-extensions"), true);
-		const extensionIndex = fake.calls[0].args.indexOf("--extension");
-		assert.match(fake.calls[0].args[extensionIndex + 1], /extensions\/subagent\/index\.ts$/);
+		assert.equal(fake.calls[0].args.includes("--no-skills"), true);
+		// Absent extensions/skills lists mean no resources: the child gets no
+		// explicit --extension/--skill flags and the subagent extension is never
+		// added implicitly.
+		assert.equal(fake.calls[0].args.includes("--extension"), false);
+		assert.equal(fake.calls[0].args.includes("--skill"), false);
 		assert.equal(fake.calls[0].env?.PI_FFF_MODE, "override");
 	});
 

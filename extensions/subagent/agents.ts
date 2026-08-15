@@ -19,11 +19,45 @@ export interface AgentConfig {
 	systemPrompt: string;
 	source: "user" | "project";
 	filePath: string;
+	/** Explicit parent-loaded extension selectors (Pi-style package selectors or unique local names). */
+	extensions?: string[];
+	/** Explicit parent-loaded skill names. */
+	skills?: string[];
+	/** Frontmatter resource field shape errors, surfaced before any child spawn. */
+	resourceErrors?: string[];
 }
 
 export interface AgentDiscoveryResult {
 	agents: AgentConfig[];
 	projectAgentsDir: string | null;
+}
+
+/**
+ * Validate an optional YAML-array resource field (extensions / skills).
+ * Absent or null fields yield no resources. Any other shape records an
+ * explicit error so the caller can fail before spawning a child.
+ */
+function parseResourceList(field: unknown, fieldName: string, resourceErrors: string[]): string[] | undefined {
+	if (field === undefined || field === null) return undefined;
+	if (!Array.isArray(field) || field.some((item) => typeof item !== "string" || item.trim() === "")) {
+		resourceErrors.push(`"${fieldName}" must be a YAML array of strings`);
+		return undefined;
+	}
+	const values = (field as string[]).map((item) => item.trim());
+	return values.length > 0 ? values : undefined;
+}
+
+function parseTools(field: unknown, resourceErrors: string[]): string[] | undefined {
+	if (field === undefined || field === null) return undefined;
+	if (typeof field !== "string") {
+		resourceErrors.push(`"tools" must be a comma-separated string`);
+		return undefined;
+	}
+	const tools = field
+		.split(",")
+		.map((t: string) => t.trim())
+		.filter(Boolean);
+	return tools.length > 0 ? tools : undefined;
 }
 
 function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig[] {
@@ -52,25 +86,30 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			continue;
 		}
 
-		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
+		const { frontmatter, body } = parseFrontmatter<Record<string, unknown>>(content);
 
-		if (!frontmatter.name || !frontmatter.description) {
+		const name = typeof frontmatter.name === "string" ? frontmatter.name : undefined;
+		const description = typeof frontmatter.description === "string" ? frontmatter.description : undefined;
+		if (!name || !description) {
 			continue;
 		}
 
-		const tools = frontmatter.tools
-			?.split(",")
-			.map((t: string) => t.trim())
-			.filter(Boolean);
+		const resourceErrors: string[] = [];
+		const tools = parseTools(frontmatter.tools, resourceErrors);
+		const extensions = parseResourceList(frontmatter.extensions, "extensions", resourceErrors);
+		const skills = parseResourceList(frontmatter.skills, "skills", resourceErrors);
 
 		agents.push({
-			name: frontmatter.name,
-			description: frontmatter.description,
+			name,
+			description,
 			tools: tools && tools.length > 0 ? tools : undefined,
-			model: frontmatter.model,
+			model: typeof frontmatter.model === "string" ? frontmatter.model : undefined,
 			systemPrompt: body,
 			source,
 			filePath,
+			extensions,
+			skills,
+			resourceErrors: resourceErrors.length > 0 ? resourceErrors : undefined,
 		});
 	}
 
