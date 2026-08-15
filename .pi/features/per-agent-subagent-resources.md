@@ -94,4 +94,6 @@ Allow every subagent definition to select an exact, validated subset of extensio
 
 ## Review log
 - Final verification: `node --test extensions/subagent/*.test.ts extensions/cymbal/*.test.ts` passed (94/94); AC1-AC8 have implementation and test/documentation evidence.
-- Reviewer verdict: pending
+- Initial reviewer verdict: changes-required (`null` resource fields accepted; independent Cymbal provenance too permissive).
+- Focused fix: `2d5c95f110d9ef497cdbf979df46f1ae08b8d7ce`; required check passed (98/98 tests).
+- Final reviewer verdict: pending
