@@ -1,7 +1,7 @@
 # Feature: Token-efficient codebase exploration
 
 ## Status
-reviewing
+complete
 
 ## Original request
 Use FFF, Cymbal, and a cheap specialized subagent to reduce tokens spent exploring codebases for functional feature requests.
@@ -96,3 +96,5 @@ Reduce expensive planner exploration for functional feature requests by automati
 - Initial review: changes-required. Critical findings covered dependency enforcement, FFF provenance, explorer write access, and invalid Cymbal guidance.
 - Bounded fix pass: completed in `bcda0a1fdcf1a62c6efc10910645f9e04e7307b9`, `c789d9fbb84632ff60c0ab9165dd7b8e35b110bf`, and `e21bd5e8346e46990140837176da81838f36b36c`.
 - Final review: changes-required. Critical: spawned explorer subprocesses do not load the extension that registers the allowlisted `cymbal` tool (`extensions/subagent/index.ts:362-364`). Warning: dependency installation documentation is inconsistent (`extensions/subagent/README.md:87-99`). Automatic fix/review budget exhausted.
+- Completion fix: `0e538a310d1bc6f92d32f4d37d46c754e720095d` loads the extension in child processes, exposes `cymbal` to every workflow role, corrects dependency installation guidance, and applies the approved model selector update.
+- Completion review: approved; all 51 repository tests pass and no critical findings remain.

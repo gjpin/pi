@@ -31,7 +31,7 @@ After brainstorming, before presenting scope, resolve any functional ambiguity:
    - `task`: the clarified functional request, including key terms, relevant areas of the codebase, and any context gathered during brainstorming
    - `agentScope: "project"`
    - `confirmProjectAgents: false`
-   
+
    Do not present scope until exploration completes or the retry policy is exhausted.
 8. Verify important claims from the exploration report by inspecting referenced files, symbols, or test files. Do not take the report on faith.
 9. If the exploration produces no output, error output, or the agent result is marked as failed, retry exactly once. If the second attempt also fails, stop planning and present the user with explicit choices: retry manually or continue without exploration.
