@@ -34,6 +34,26 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 
+export const CYMNAL_COMMANDS = [
+	"structure",
+	"investigate",
+	"trace",
+	"impact",
+	"show",
+	"outline",
+	"search",
+	"refs",
+	"context",
+	"ls",
+	"impls",
+	"importers",
+	"diff",
+	"changed",
+	"version",
+] as const;
+
+export type CymbalCommand = (typeof CYMNAL_COMMANDS)[number];
+
 export const MAX_PARALLEL_TASKS = 8;
 export const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
@@ -198,6 +218,15 @@ function getResultOutput(result: SingleResult): string {
 		return result.errorMessage || result.stderr || getFinalOutput(result.messages) || "No final assistant output.";
 	}
 	return getFinalOutput(result.messages);
+}
+
+const EXPLORER_WORD_LIMIT = 800;
+
+function truncateToWordBound(output: string): string {
+	const words = output.split(/\s+/).filter(Boolean);
+	if (words.length <= EXPLORER_WORD_LIMIT) return output;
+	const truncated = words.slice(0, EXPLORER_WORD_LIMIT).join(" ");
+	return `${truncated}\n\n[Output truncated to ~800 words. Full output preserved in tool details.]`;
 }
 
 function truncateParallelOutput(output: string): string {
@@ -729,6 +758,10 @@ export function registerSubagent(
 					spawnProcess,
 				);
 				const isError = isFailedResult(result);
+				const explorerOutput = getFinalOutput(result.messages) || "(no output)";
+				// Enforce ~800 word bound for codebase-explorer final output (AC3)
+				const boundedOutput =
+					params.agent === "codebase-explorer" ? truncateToWordBound(explorerOutput) : explorerOutput;
 				if (isError) {
 					const errorMsg = getResultOutput(result);
 					return {
@@ -738,7 +771,7 @@ export function registerSubagent(
 					};
 				}
 				return {
-					content: [{ type: "text", text: getFinalOutput(result.messages) || "(no output)" }],
+					content: [{ type: "text", text: boundedOutput }],
 					details: makeDetails("single")([result]),
 				};
 			}
@@ -1089,22 +1122,25 @@ export function registerSubagent(
 				);
 			}
 
-			const findResult = await execCheck("find", ["--fff-version"]);
-			if (findResult.exitCode === 0 && findResult.stdout.trim()) {
-				results.push(`✓ FFF find: ${findResult.stdout.trim().split("\n")[0]}`);
+			// Inspect getAllTools() sourceInfo to establish FFF override status
+			const allTools = pi.getAllTools();
+			const findTool = allTools.find((t) => t.name === "find");
+			const grepTool = allTools.find((t) => t.name === "grep");
+
+			if (findTool && findTool.sourceInfo && findTool.sourceInfo.source !== "builtin") {
+				results.push("✓ FFF find override active");
 			} else {
 				errors.push(
-					"✗ 'find' is not FFF. Install FFF and enable override mode. " +
+					"✗ 'find' is not an FFF override. Install FFF and enable override mode. " +
 						"See: https://github.com/earendil-works/fff",
 				);
 			}
 
-			const grepResult = await execCheck("grep", ["--fff-version"]);
-			if (grepResult.exitCode === 0 && grepResult.stdout.trim()) {
-				results.push(`✓ FFF grep: ${grepResult.stdout.trim().split("\n")[0]}`);
+			if (grepTool && grepTool.sourceInfo && grepTool.sourceInfo.source !== "builtin") {
+				results.push("✓ FFF grep override active");
 			} else {
 				errors.push(
-					"✗ 'grep' is not FFF. Install FFF and enable override mode. " +
+					"✗ 'grep' is not an FFF override. Install FFF and enable override mode. " +
 						"See: https://github.com/earendil-works/fff",
 				);
 			}
@@ -1124,6 +1160,80 @@ export function registerSubagent(
 				content: [{ type: "text" as const, text: [...results, ...errors].join("\n") }],
 				isError: !allOk,
 			};
+		},
+	});
+
+	const ALLOWED_CYMBAL_COMMANDS = new Set(CYMNAL_COMMANDS);
+	const CYMBAL_OUTPUT_CAP = 50 * 1024;
+
+	pi.registerTool({
+		name: "cymbal",
+		label: "Cymbal",
+		description: [
+			"Run a read-only Cymbal navigation command (structure, investigate, trace, impact, show, outline, search, refs, context, ls, impls, importers, diff, changed, version).",
+			"Cannot invoke mutating Cymbal commands or arbitrary shell.",
+			"Errors and truncation are reported in the output.",
+		].join(" "),
+		parameters: Type.Object({
+			command: Type.String({
+				description: "Cymbal subcommand to run (read-only navigation commands only)",
+			}),
+			args: Type.Optional(
+				Type.Array(Type.String(), {
+					description: "Arguments for the subcommand",
+				}),
+			),
+		}),
+		async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
+			const command = params.command as string;
+			if (!ALLOWED_CYMBAL_COMMANDS.has(command)) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `Invalid cymbal command: "${command}". Allowed: ${CYMNAL_COMMANDS.join(", ")}.`,
+						},
+					],
+					isError: true,
+				};
+			}
+
+			const args = (params.args as string[]) ?? [];
+			try {
+				const result = await pi.exec("cymbal", [command, ...args], { signal });
+				let output = result.stdout;
+				if (result.stderr) {
+					output += output ? "\n" : "";
+					output += result.stderr;
+				}
+				const byteLength = Buffer.byteLength(output, "utf8");
+				if (byteLength > CYMBAL_OUTPUT_CAP) {
+					let truncated = output.slice(0, CYMBAL_OUTPUT_CAP);
+					while (Buffer.byteLength(truncated, "utf8") > CYMBAL_OUTPUT_CAP) {
+						truncated = truncated.slice(0, -1);
+					}
+					output = `${truncated}\n\n[Output truncated: ${byteLength - Buffer.byteLength(truncated, "utf8")} bytes omitted. Full output preserved in tool details.]`;
+				}
+				if (result.code !== 0) {
+					return {
+						content: [{ type: "text" as const, text: output }],
+						isError: true,
+					};
+				}
+				return {
+					content: [{ type: "text" as const, text: output }],
+				};
+			} catch (e) {
+				return {
+					content: [
+						{
+							type: "text" as const,
+							text: `cymbal execution failed: ${e instanceof Error ? e.message : String(e)}`,
+						},
+					],
+					isError: true,
+				};
+			}
 		},
 	});
 }

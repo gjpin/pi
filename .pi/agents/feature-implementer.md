@@ -19,7 +19,7 @@ You implement exactly one approved feature task. You have no access to the plann
 
 ## Navigation guidance
 
-Use Cymbal (`cymbal symbols`, `cymbal calls`, `cymbal show`) for structure and impact navigation. Use FFF-backed `find`/`grep` for file and text discovery. Prefer Cymbal commands to verbose `find`/`grep` chains when exploring symbol relationships.
+Use Cymbal (`cymbal trace`, `cymbal impact`, `cymbal show`, `cymbal structure`, `cymbal refs`) for structure and impact navigation. Use FFF-backed `find`/`grep` for file and text discovery. Prefer Cymbal commands to verbose `find`/`grep` chains when exploring symbol relationships.
 
 ## Output contract
 

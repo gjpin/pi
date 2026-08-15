@@ -74,97 +74,73 @@ describe("formatAgentList", () => {
 });
 
 describe("codebase-explorer", () => {
-	it("is discoverable among project agents", async () => {
+	// Read the checked-in resource once
+	async function readExplorer(): Promise<{ frontmatter: Record<string, string>; body: string }> {
+		const root = resolve(import.meta.dirname, "../..");
+		return parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/agents/codebase-explorer.md"), "utf8"),
+		);
+	}
+
+	it("is discoverable among project agents with the checked-in resource", async () => {
 		const { agents, nested } = await project();
+		const checked = await readExplorer();
+		// Copy the checked-in file into the test project
 		await writeFile(
 			join(agents, "codebase-explorer.md"),
-			markdown(
-				"name: codebase-explorer\ndescription: Codebase discovery agent\nmodel: openrouter/deepseek/deepseek-v4-flash\ntools: read, grep, find, ls, bash",
-			),
+			`---\nname: ${checked.frontmatter.name}\ndescription: ${checked.frontmatter.description}\nmodel: ${checked.frontmatter.model}\ntools: ${checked.frontmatter.tools}\n---\n\n${checked.body}`,
 		);
 
 		const found = discoverAgents(nested, "project");
 		const explorer = found.agents.find((a) => a.name === "codebase-explorer");
 		assert.ok(explorer, "codebase-explorer must be discoverable");
 		assert.equal(explorer.model, "openrouter/deepseek/deepseek-v4-flash");
-		assert.ok(explorer.tools);
-		assert.ok(explorer.tools.includes("read"));
-		assert.ok(explorer.tools.includes("grep"));
-		assert.ok(explorer.tools.includes("find"));
-		assert.ok(explorer.tools.includes("ls"));
-		assert.ok(explorer.tools.includes("bash"));
 	});
 
-	it("is read-only (no edit or write tools)", async () => {
-		const { agents, nested } = await project();
-		await writeFile(
-			join(agents, "codebase-explorer.md"),
-			markdown(
-				"name: codebase-explorer\ndescription: Codebase discovery agent\nmodel: openrouter/deepseek/deepseek-v4-flash\ntools: read, grep, find, ls, bash",
-			),
-		);
-
-		const found = discoverAgents(nested, "project");
-		const explorer = found.agents.find((a) => a.name === "codebase-explorer");
-		assert.ok(explorer);
-		assert.ok(explorer.tools);
-		assert.equal(explorer.tools.includes("edit"), false, "explorer must not have edit");
-		assert.equal(explorer.tools.includes("write"), false, "explorer must not have write");
+	it("is read-only: no bash, edit, or write tools", async () => {
+		const checked = await readExplorer();
+		const tools = (checked.frontmatter.tools || "").split(/,\s*/).map((t) => t.trim());
+		assert.ok(tools.includes("read"), "explorer must have read");
+		assert.ok(tools.includes("grep"), "explorer must have grep");
+		assert.ok(tools.includes("find"), "explorer must have find");
+		assert.ok(tools.includes("ls"), "explorer must have ls");
+		assert.ok(tools.includes("cymbal"), "explorer must have cymbal");
+		assert.equal(tools.includes("bash"), false, "explorer must not have bash");
+		assert.equal(tools.includes("edit"), false, "explorer must not have edit");
+		assert.equal(tools.includes("write"), false, "explorer must not have write");
 	});
 
 	it("has evidence-packet sections in the prompt body", async () => {
-		const { agents, nested } = await project();
-		await writeFile(
-			join(agents, "codebase-explorer.md"),
-			markdown(
-				"name: codebase-explorer\ndescription: Codebase discovery agent\nmodel: openrouter/deepseek/deepseek-v4-flash\ntools: read, grep, find, ls, bash",
-				[
-					"- **Repository shape** \u2014 language, framework, build system",
-					"- **Relevant paths and symbols** \u2014 files, modules, types",
-					"- **Flow** \u2014 key control flow, data flow",
-					"- **Reusable patterns** \u2014 existing abstractions",
-					"- **Tests and checks** \u2014 relevant test files",
-					"- **Risks and unknowns** \u2014 areas of impact",
-					"- **Concrete evidence** \u2014 specific line references",
-				].join("\n"),
-			),
-		);
-
-		const found = discoverAgents(nested, "project");
-		const explorer = found.agents.find((a) => a.name === "codebase-explorer");
-		assert.ok(explorer);
-		assert.match(explorer.systemPrompt, /Repository shape/);
-		assert.match(explorer.systemPrompt, /Relevant paths and symbols/);
-		assert.match(explorer.systemPrompt, /Flow/);
-		assert.match(explorer.systemPrompt, /Reusable patterns/);
-		assert.match(explorer.systemPrompt, /Tests and checks/);
-		assert.match(explorer.systemPrompt, /Risks and unknowns/);
-		assert.match(explorer.systemPrompt, /Concrete evidence/);
+		const checked = await readExplorer();
+		assert.match(checked.body, /Repository shape/);
+		assert.match(checked.body, /Relevant paths and symbols/);
+		assert.match(checked.body, /Flow/);
+		assert.match(checked.body, /Reusable patterns/);
+		assert.match(checked.body, /Tests and checks/);
+		assert.match(checked.body, /Risks and unknowns/);
+		assert.match(checked.body, /Concrete evidence/);
 	});
 
-	it("routes Cymbal before FFF and labels fallback coverage", async () => {
-		const { agents, nested } = await project();
-		await writeFile(
-			join(agents, "codebase-explorer.md"),
-			markdown(
-				"name: codebase-explorer\ndescription: Codebase discovery agent\nmodel: openrouter/deepseek/deepseek-v4-flash\ntools: read, grep, find, ls, bash",
-				[
-					"1. **Cymbal preferred.**",
-					"2. **FFF-backed find/grep.**",
-					"3. **Cymbal fallback label.** If Cymbal cannot provide semantic coverage",
-					"**Coverage: reduced (FFF only)**",
-					"Do not fail exploration",
-				].join("\n"),
-			),
-		);
+	it("routes Cymbal before FFF, uses documented commands, and labels fallback coverage", async () => {
+		const checked = await readExplorer();
+		assert.match(checked.body, /Cymbal preferred/);
+		assert.match(checked.body, /FFF-backed find/);
+		// Documented Cymbal navigation commands
+		assert.match(checked.body, /structure/);
+		assert.match(checked.body, /investigate/);
+		assert.match(checked.body, /trace/);
+		assert.match(checked.body, /impact/);
+		assert.match(checked.body, /show/);
+		assert.match(checked.body, /outline/);
+		assert.match(checked.body, /search/);
+		assert.match(checked.body, /refs/);
+		assert.match(checked.body, /context/);
+		assert.match(checked.body, /reduced.*FFF only/);
+	});
 
-		const found = discoverAgents(nested, "project");
-		const explorer = found.agents.find((a) => a.name === "codebase-explorer");
-		assert.ok(explorer);
-		assert.match(explorer.systemPrompt, /Cymbal preferred/);
-		assert.match(explorer.systemPrompt, /FFF-backed find/);
-		assert.match(explorer.systemPrompt, /Cymbal fallback label/);
-		assert.match(explorer.systemPrompt, /reduced.*FFF only/);
+	it("requires approximately 800-word evidence packet", async () => {
+		const checked = await readExplorer();
+		assert.match(checked.body, /approximately 800 words/);
 	});
 
 	it("FFF navigation guidance is present in feature-implementer", async () => {
@@ -206,15 +182,78 @@ describe("codebase-explorer", () => {
 		assert.match(prompt.body, /fresh report/);
 	});
 
-	it("prompt has dependency checks in preflight", async () => {
+	it("prompt has dependency checks in preflight using check-workflow-deps tool", async () => {
 		const root = resolve(import.meta.dirname, "../..");
 		const prompt = parseFrontmatter<Record<string, string>>(
 			await readFile(join(root, ".pi/prompts/feature.md"), "utf8"),
 		);
-		assert.match(prompt.body, /cymbal version/);
-		assert.match(prompt.body, /FFF/);
+		// Must invoke the registered check-workflow-deps tool, not shell probes
+		assert.match(prompt.body, /check-workflow-deps/);
+		assert.match(prompt.body, /isError/);
 		assert.match(prompt.body, /dependency/);
 		assert.match(prompt.body, /install.*modify/);
+		// Shell probe no longer present
+		assert.doesNotMatch(prompt.body, /fff-version/);
+		assert.doesNotMatch(prompt.body, /2>&1/);
+	});
+
+	it("Cymbal guidance in implementer uses documented commands", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const implementer = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/agents/feature-implementer.md"), "utf8"),
+		);
+		assert.match(implementer.body, /trace/);
+		assert.match(implementer.body, /impact/);
+		assert.match(implementer.body, /show/);
+		assert.match(implementer.body, /structure/);
+		assert.match(implementer.body, /refs/);
+	});
+
+	it("Cymbal guidance in reviewer uses documented commands", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const reviewer = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/agents/feature-reviewer.md"), "utf8"),
+		);
+		assert.match(reviewer.body, /trace/);
+		assert.match(reviewer.body, /impact/);
+		assert.match(reviewer.body, /show/);
+		assert.match(reviewer.body, /refs/);
+		assert.match(reviewer.body, /context/);
+	});
+
+	it("retry policy: exactly one retry, then stop with choices", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const prompt = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/prompts/feature.md"), "utf8"),
+		);
+		assert.match(prompt.body, /retry exactly once/);
+		assert.match(prompt.body, /second attempt/);
+		assert.match(prompt.body, /continue without exploration/);
+	});
+
+	it("explorer task instruction includes cwd", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const prompt = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/prompts/feature.md"), "utf8"),
+		);
+		assert.match(prompt.body, /cwd/);
+	});
+
+	it("explorer task instruction includes clarified functional request", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const prompt = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/prompts/feature.md"), "utf8"),
+		);
+		assert.match(prompt.body, /clarified functional request/);
+	});
+
+	it("usage reporting is preserved", async () => {
+		const root = resolve(import.meta.dirname, "../..");
+		const prompt = parseFrontmatter<Record<string, string>>(
+			await readFile(join(root, ".pi/prompts/feature.md"), "utf8"),
+		);
+		// The prompt should reference the subagent tool which collects usage
+		assert.match(prompt.body, /subagent/);
 	});
 
 	it("implementer and reviewer retain existing result contract", async () => {

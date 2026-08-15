@@ -11,7 +11,7 @@ Use bash only for read-only commands such as `git status`, `git diff`, `git log`
 
 ## Navigation guidance
 
-Use Cymbal (`cymbal symbols`, `cymbal calls`, `cymbal show`) for structure and impact analysis. Use FFF-backed `find`/`grep` for file and text discovery. Do not use `edit` or `write` — this review is read-only.
+Use Cymbal (`cymbal trace`, `cymbal impact`, `cymbal show`, `cymbal refs`, `cymbal context`) for structure and impact analysis. Use FFF-backed `find`/`grep` for file and text discovery. Do not use `edit` or `write` — this review is read-only.
 
 ## Output contract
 

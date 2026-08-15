@@ -15,10 +15,8 @@ The planning conversation is the source of proposals; the approved feature docum
 2. Determine whether the current directory is a git repository.
 3. Read all applicable `AGENTS.md` and `CLAUDE.md` instructions and identify standard test, typecheck, and lint commands.
 4. Do not create branches, worktrees, commits, feature documents, or product-code changes yet.
-5. Check repository exploration dependencies:
-   - Run `cymbal version`. If it fails, stop and tell the user to install Cymbal (see https://github.com/DietrichGebert/cymbal).
-   - Verify that active `find` and `grep` are FFF overrides. Run `find --version 2>&1 | grep -iq fff || grep --version 2>&1 | grep -iq fff`. If either is not an FFF override, stop and tell the user to activate FFF (`fff override`) and ensure `PI_FFF_MODE=override` is set.
-6. If either dependency check fails, do not continue. Do not install or modify dependencies.
+5. Run the `check-workflow-deps` tool to verify repository exploration dependencies. If the tool reports an error (`isError`), return its output to the user and do not continue.
+6. Do not install or modify dependencies.
 
 ## B. Brainstorm
 
