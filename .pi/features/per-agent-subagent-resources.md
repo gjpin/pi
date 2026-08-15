@@ -90,7 +90,7 @@ Allow every subagent definition to select an exact, validated subset of extensio
 ## Integration log
 - T1: integrated as `98537aaf4722247a1386461087a25aaf59c0647d`; combined check passed (54/54 tests).
 - T2: integrated as `f36c437f6a51cf2b2d51c9892d87cfae1783892b`; combined check passed (89/89 tests).
-- T3: pending
+- T3: integrated as `3e53e69b5d9f104401393babc4776f60c473b50d`; combined check passed (94/94 tests).
 
 ## Review log
 - pending
