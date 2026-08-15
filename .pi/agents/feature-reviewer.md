@@ -1,7 +1,7 @@
 ---
 name: feature-reviewer
 description: Reviews an integrated feature against its approved scope and base revision
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, cymbal
 model: openai-codex/gpt-5.6-luna:xhigh
 ---
 

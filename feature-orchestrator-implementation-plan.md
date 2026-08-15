@@ -19,7 +19,7 @@ The workflow must support different providers and models by role:
 | Role | Provider/model | Thinking level |
 |---|---|---|
 | Interactive brainstorming, scope, and task decomposition | `openai-codex/gpt-5.6-sol` | `medium` |
-| Task implementation | `openrouter/deepseek/deepseek-v4-flash` | provider/model default |
+| Task implementation | `openrouter/deepseek/deepseek-v4-flash-0731` | `max` |
 | Final code review | `openai-codex/gpt-5.6-luna` | `xhigh` |
 
 If OpenAI API credentials are used instead of a ChatGPT/Codex subscription, the two OpenAI model selectors may be changed from `openai-codex/...` to `openai/...`. Do not silently change providers during implementation.
@@ -126,7 +126,7 @@ Before approval, validate the plan conceptually:
 Each implementation subagent must:
 
 - receive only the approved feature document plus one fully specified task
-- use `openrouter/deepseek/deepseek-v4-flash`
+- use `openrouter/deepseek/deepseek-v4-flash-0731:max`
 - work in an isolated git worktree when running concurrently
 - implement only its assigned task
 - run task-specific checks
@@ -266,8 +266,8 @@ Frontmatter:
 ---
 name: feature-implementer
 description: Implements one approved feature task in an isolated worktree
-model: openrouter/deepseek/deepseek-v4-flash
-tools: read, grep, find, ls, bash, edit, write
+model: openrouter/deepseek/deepseek-v4-flash-0731:max
+tools: read, grep, find, ls, bash, edit, write, cymbal
 ---
 ```
 
@@ -314,7 +314,7 @@ Frontmatter:
 ---
 name: feature-reviewer
 description: Reviews an integrated feature against its approved scope and base revision
-tools: read, grep, find, ls, bash
+tools: read, grep, find, ls, bash, cymbal
 model: openai-codex/gpt-5.6-luna:xhigh
 ---
 ```
@@ -588,7 +588,7 @@ Refresh and verify catalogs:
 
 ```bash
 pi update --models
-pi --list-models deepseek-v4-flash
+pi --list-models deepseek-v4-flash-0731
 pi --list-models gpt-5.6
 ```
 
@@ -596,7 +596,7 @@ The desired selectors are:
 
 ```text
 openai-codex/gpt-5.6-sol:medium
-openrouter/deepseek/deepseek-v4-flash
+openrouter/deepseek/deepseek-v4-flash-0731:max
 openai-codex/gpt-5.6-luna:xhigh
 ```
 
@@ -608,7 +608,7 @@ Recommended launch command from a target repository:
 pi \
   -e /Users/zero/src/_pi/extensions/subagent/index.ts \
   --model openai-codex/gpt-5.6-sol:medium \
-  --models 'openai-codex/gpt-5.6-sol:medium,openrouter/deepseek/deepseek-v4-flash,openai-codex/gpt-5.6-luna:xhigh'
+  --models 'openai-codex/gpt-5.6-sol:medium,openrouter/deepseek/deepseek-v4-flash-0731:max,openai-codex/gpt-5.6-luna:xhigh'
 ```
 
 Then invoke:

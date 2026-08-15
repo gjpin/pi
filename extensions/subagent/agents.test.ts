@@ -94,7 +94,7 @@ describe("codebase-explorer", () => {
 		const found = discoverAgents(nested, "project");
 		const explorer = found.agents.find((a) => a.name === "codebase-explorer");
 		assert.ok(explorer, "codebase-explorer must be discoverable");
-		assert.equal(explorer.model, "openrouter/deepseek/deepseek-v4-flash");
+		assert.equal(explorer.model, "openrouter/deepseek/deepseek-v4-flash-0731:max");
 	});
 
 	it("is read-only: no bash, edit, or write tools", async () => {
@@ -150,6 +150,7 @@ describe("codebase-explorer", () => {
 		);
 		assert.match(implementer.body, /Cymbal/);
 		assert.match(implementer.body, /FFF/);
+		assert.match(implementer.frontmatter.tools, /(?:^|,)\s*cymbal\s*(?:,|$)/);
 	});
 
 	it("FFF navigation guidance is present in feature-reviewer without write tools", async () => {
@@ -159,6 +160,7 @@ describe("codebase-explorer", () => {
 		);
 		assert.match(reviewer.body, /Cymbal/);
 		assert.match(reviewer.body, /FFF/);
+		assert.match(reviewer.frontmatter.tools, /(?:^|,)\s*cymbal\s*(?:,|$)/);
 		// Reviewer must remain read-only
 		assert.doesNotMatch(reviewer.frontmatter.tools, /(?:^|,)\s*(?:edit|write)\s*(?:,|$)/);
 	});
@@ -293,7 +295,7 @@ describe("feature resources", () => {
 
 		assert.equal(implementer.frontmatter.name, "feature-implementer");
 		assert.ok(implementer.frontmatter.description);
-		assert.equal(implementer.frontmatter.model, "openrouter/deepseek/deepseek-v4-flash");
+		assert.equal(implementer.frontmatter.model, "openrouter/deepseek/deepseek-v4-flash-0731:max");
 		assert.equal(reviewer.frontmatter.name, "feature-reviewer");
 		assert.ok(reviewer.frontmatter.description);
 		assert.equal(reviewer.frontmatter.model, "openai-codex/gpt-5.6-luna:xhigh");

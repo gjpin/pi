@@ -1,7 +1,7 @@
 ---
 name: codebase-explorer
 description: Focused, read-only codebase discovery for feature planning
-model: openrouter/deepseek/deepseek-v4-flash
+model: openrouter/deepseek/deepseek-v4-flash-0731:max
 tools: read, grep, find, ls, cymbal
 ---
 

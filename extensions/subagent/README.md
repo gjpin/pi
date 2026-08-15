@@ -28,7 +28,7 @@ Authenticate, refresh the catalogs, and verify the required models:
 
 ```bash
 pi update --models
-pi --list-models deepseek-v4-flash
+pi --list-models deepseek-v4-flash-0731
 pi --list-models gpt-5.6
 ```
 
@@ -36,25 +36,31 @@ Required selectors:
 
 ```text
 openai-codex/gpt-5.6-sol:medium
-openrouter/deepseek/deepseek-v4-flash
+openrouter/deepseek/deepseek-v4-flash-0731:max
 openai-codex/gpt-5.6-luna:xhigh
 ```
 
 If OpenAI API credentials are used instead of a ChatGPT/Codex subscription, change the two OpenAI selectors to `openai/...`; do not silently change providers.
 
-If the OpenRouter model is absent after login and refresh, first verify that OpenRouter's catalog ID is `deepseek/deepseek-v4-flash`, then merge this minimal entry into `~/.pi/agent/models.json`:
+If the OpenRouter model is absent after login and refresh, first verify that OpenRouter's catalog ID is `deepseek/deepseek-v4-flash-0731`, then merge this minimal entry into `~/.pi/agent/models.json`:
 
 ```json
 {
   "providers": {
     "openrouter": {
-      "models": [{ "id": "deepseek/deepseek-v4-flash" }]
+      "models": [
+        {
+          "id": "deepseek/deepseek-v4-flash-0731",
+          "reasoning": true,
+          "thinkingLevelMap": { "max": "max" }
+        }
+      ]
     }
   }
 }
 ```
 
-Preserve any existing providers and models in that file. This intentionally does not invent context-window, output-limit, or pricing metadata. Do not fall back to the direct `deepseek` provider.
+Preserve any existing providers and models in that file. This intentionally does not invent context-window, output-limit, or pricing metadata. Select it with the `:max` suffix; do not fall back to the direct `deepseek` provider.
 
 ## Launch
 
@@ -64,7 +70,7 @@ From a target repository containing (or loading) the included `.pi/agents` and `
 pi \
   -e /Users/zero/src/_pi/extensions/subagent/index.ts \
   --model openai-codex/gpt-5.6-sol:medium \
-  --models 'openai-codex/gpt-5.6-sol:medium,openrouter/deepseek/deepseek-v4-flash,openai-codex/gpt-5.6-luna:xhigh'
+  --models 'openai-codex/gpt-5.6-sol:medium,openrouter/deepseek/deepseek-v4-flash-0731:max,openai-codex/gpt-5.6-luna:xhigh'
 ```
 
 Then run:
@@ -81,29 +87,29 @@ For initial development, run in `/Users/zero/src/_pi`. Global packaging is inten
 
 The workflow dependency check (`check-workflow-deps`) verifies that the active `find` and `grep` commands are FFF wrappers running in override mode.
 
-Install FFF and enable override mode so `find` and `grep` in PATH resolve to FFF:
+Install the [FFF Pi extension](https://github.com/dmtrKovalenko/fff) and enable its override mode:
 
 ```bash
-# Install FFF (see https://github.com/earendil-works/fff)
-# Then enable override mode so find and grep become FFF wrappers:
+pi install npm:@ff-labs/pi-fff
 export PI_FFF_MODE=override
 ```
 
-Set `PI_FFF_MODE=override` in your shell profile or session before launching pi.
+Set `PI_FFF_MODE=override` before launching Pi so FFF replaces Pi's built-in `find` and `grep` tools.
 
 ### Cymbal
 
-The dependency check also verifies `cymbal` is executable:
+Install the [Cymbal CLI](https://github.com/1broseidon/cymbal) and ensure it is on `PATH`:
 
 ```bash
-npm install -g @earendil-works/cymbal
+brew install 1broseidon/tap/cymbal
+# or: CGO_CFLAGS="-DSQLITE_ENABLE_FTS5" go install github.com/1broseidon/cymbal@latest
 ```
 
-## Launch
+## Dependency verification
 
 When all dependencies are met, the `check-workflow-deps` tool reports success with version details. On failure it returns actionable guidance without installing or modifying anything.
 
-Spawned workflow-role agents (explorer, implementer, reviewer) automatically receive `PI_FFF_MODE=override` in their environment.
+Spawned workflow-role agents load this extension for the `cymbal` tool and automatically receive `PI_FFF_MODE=override` in their environment.
 
 ## Tests
 

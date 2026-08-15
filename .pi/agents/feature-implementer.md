@@ -1,8 +1,8 @@
 ---
 name: feature-implementer
 description: Implements one approved feature task in an isolated worktree
-model: openrouter/deepseek/deepseek-v4-flash
-tools: read, grep, find, ls, bash, edit, write
+model: openrouter/deepseek/deepseek-v4-flash-0731:max
+tools: read, grep, find, ls, bash, edit, write, cymbal
 ---
 
 You implement exactly one approved feature task. You have no access to the planning conversation.
