@@ -87,8 +87,9 @@ Reduce expensive planner exploration for functional feature requests by automati
 - Checks: `node --test extensions/subagent/agents.test.ts`
 
 ## Integration log
-- T1: pending
-- T2: pending
+- T1: integrated as `681b75df8e1ecda31f99a7d7133aac3b8a2637c4` (worker `c341e771ab127325a3cc9ccbab2705156753d0ba`); task and combined checks passed.
+- T2: integrated as `ea8367112c743ea57b6c69fa335a18aee7a544a7` (worker `453b0776a8f4d3a5444a5c33ae6e8af98fa7012c`); task and combined checks passed.
+- Wave 1: `node --test extensions/subagent/*.test.ts` passed, 27 tests. Task branches used the user-approved `pi-feature-task/<slug>/<task-id>` prefix because Git cannot store `pi-feature/<slug>` and nested `pi-feature/<slug>/<task-id>` refs simultaneously.
 
 ## Review log
 - pending
