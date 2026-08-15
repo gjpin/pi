@@ -118,7 +118,7 @@ function mockAllTools(
 		if (source === "builtin") {
 			path = `<builtin:${name}>`;
 		} else if (provenance === "other") {
-			path = `some-other-extension:/path/to/${name}.ts`;
+			path = `some-other-fff-extension:/path/to/${name}.ts`;
 		} else {
 			// FFF provenance: npm @ff-labs/pi-fff or git dmtrKovalenko/fff
 			path = name === "find" || name === "grep"

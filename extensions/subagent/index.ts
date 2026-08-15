@@ -1144,12 +1144,7 @@ export function registerSubagent(
 			function isFffProvenance(tool: { sourceInfo?: { source: string; path?: string } }): boolean {
 				if (!tool?.sourceInfo) return false;
 				const combined = `${tool.sourceInfo.source} ${tool.sourceInfo.path ?? ""}`.toLowerCase();
-				return (
-					combined.includes("@ff-labs/pi-fff") ||
-					combined.includes("dmtrkovalenko/fff") ||
-					combined.includes("ff-labs") ||
-					combined.includes("fff")
-				);
+				return combined.includes("@ff-labs/pi-fff") || combined.includes("dmtrkovalenko/fff");
 			}
 
 			if (!findTool || findTool.sourceInfo?.source === "builtin" || !isFffProvenance(findTool)) {
