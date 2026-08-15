@@ -75,6 +75,36 @@ Then run:
 
 For initial development, run in `/Users/zero/src/_pi`. Global packaging is intentionally deferred.
 
+## Dependency requirements
+
+### FFF (override mode)
+
+The workflow dependency check (`check-workflow-deps`) verifies that the active `find` and `grep` commands are FFF wrappers running in override mode.
+
+Install FFF and enable override mode so `find` and `grep` in PATH resolve to FFF:
+
+```bash
+# Install FFF (see https://github.com/earendil-works/fff)
+# Then enable override mode so find and grep become FFF wrappers:
+export PI_FFF_MODE=override
+```
+
+Set `PI_FFF_MODE=override` in your shell profile or session before launching pi.
+
+### Cymbal
+
+The dependency check also verifies `cymbal` is executable:
+
+```bash
+npm install -g @earendil-works/cymbal
+```
+
+## Launch
+
+When all dependencies are met, the `check-workflow-deps` tool reports success with version details. On failure it returns actionable guidance without installing or modifying anything.
+
+Spawned workflow-role agents (explorer, implementer, reviewer) automatically receive `PI_FFF_MODE=override` in their environment.
+
 ## Tests
 
 With Pi's packages available to Node's module resolver:

@@ -275,6 +275,33 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
 export type SpawnProcess = typeof spawn;
 
+export type ExecCheck = (
+	command: string,
+	args: string[],
+) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
+
+async function spawnAndCapture(
+	spawnProcess: SpawnProcess,
+	command: string,
+	args: string[],
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+	return new Promise((resolve) => {
+		const child = spawnProcess(command, args, {
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+		let stdout = "";
+		let stderr = "";
+		child.stdout.on("data", (d: Buffer) => {
+			stdout += d.toString();
+		});
+		child.stderr.on("data", (d: Buffer) => {
+			stderr += d.toString();
+		});
+		child.on("close", (code) => resolve({ stdout, stderr, exitCode: code ?? 1 }));
+		child.on("error", (e: Error) => resolve({ stdout, stderr: e.message, exitCode: 1 }));
+	});
+}
+
 async function runSingleAgent(
 	defaultCwd: string,
 	agents: AgentConfig[],
@@ -348,6 +375,7 @@ async function runSingleAgent(
 				cwd: cwd ?? defaultCwd,
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
+				env: { ...process.env, PI_FFF_MODE: "override" },
 			});
 			let buffer = "";
 
@@ -470,7 +498,11 @@ const SubagentParams = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
 });
 
-export function registerSubagent(pi: ExtensionAPI, spawnProcess: SpawnProcess = spawn) {
+export function registerSubagent(
+	pi: ExtensionAPI,
+	spawnProcess: SpawnProcess = spawn,
+	execCheck: ExecCheck = (cmd, args) => spawnAndCapture(spawnProcess, cmd, args),
+) {
 	pi.on("resources_discover", () => ({
 		promptPaths: [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.pi/prompts/feature.md")],
 	}));
@@ -1031,6 +1063,67 @@ export function registerSubagent(pi: ExtensionAPI, spawnProcess: SpawnProcess = 
 
 			const text = result.content[0];
 			return new Text(text?.type === "text" ? text.text : "(no output)", 0, 0);
+		},
+	});
+
+	pi.registerTool({
+		name: "check-workflow-deps",
+		label: "Check Workflow Dependencies",
+		description: [
+			"Verify that FFF override mode and Cymbal CLI are available for codebase exploration.",
+			"Returns success details or actionable install/configuration guidance.",
+			"Does not install or modify dependencies.",
+		].join(" "),
+		parameters: Type.Object({}),
+
+		async execute() {
+			const results: string[] = [];
+			const errors: string[] = [];
+
+			if (process.env.PI_FFF_MODE === "override") {
+				results.push("✓ PI_FFF_MODE=override");
+			} else {
+				errors.push(
+					"✗ PI_FFF_MODE is not set to \"override\". " +
+						"Set it in your shell profile or session before launching pi.",
+				);
+			}
+
+			const findResult = await execCheck("find", ["--fff-version"]);
+			if (findResult.exitCode === 0 && findResult.stdout.trim()) {
+				results.push(`✓ FFF find: ${findResult.stdout.trim().split("\n")[0]}`);
+			} else {
+				errors.push(
+					"✗ 'find' is not FFF. Install FFF and enable override mode. " +
+						"See: https://github.com/earendil-works/fff",
+				);
+			}
+
+			const grepResult = await execCheck("grep", ["--fff-version"]);
+			if (grepResult.exitCode === 0 && grepResult.stdout.trim()) {
+				results.push(`✓ FFF grep: ${grepResult.stdout.trim().split("\n")[0]}`);
+			} else {
+				errors.push(
+					"✗ 'grep' is not FFF. Install FFF and enable override mode. " +
+						"See: https://github.com/earendil-works/fff",
+				);
+			}
+
+			const cymbalResult = await execCheck("cymbal", ["version"]);
+			if (cymbalResult.exitCode === 0 && cymbalResult.stdout.trim()) {
+				results.push(`✓ Cymbal: ${cymbalResult.stdout.trim().split("\n")[0]}`);
+			} else {
+				errors.push(
+					"✗ Cymbal not found or not executable. Install: " +
+						"npm install -g @earendil-works/cymbal",
+				);
+			}
+
+			const allOk = errors.length === 0;
+			return {
+				content: [{ type: "text" as const, text: [...results, ...errors].join("\n") }],
+				isError: !allOk,
+			};
 		},
 	});
 }
