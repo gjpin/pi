@@ -1,7 +1,7 @@
 # Feature: Per-agent subagent resources
 
 ## Status
-plan-approved
+reviewing
 
 ## Original request
 Let each subagent explicitly enable parent-loaded extensions and skills, and move Cymbal into an independent extension.
@@ -93,4 +93,5 @@ Allow every subagent definition to select an exact, validated subset of extensio
 - T3: integrated as `3e53e69b5d9f104401393babc4776f60c473b50d`; combined check passed (94/94 tests).
 
 ## Review log
-- pending
+- Final verification: `node --test extensions/subagent/*.test.ts extensions/cymbal/*.test.ts` passed (94/94); AC1-AC8 have implementation and test/documentation evidence.
+- Reviewer verdict: pending
