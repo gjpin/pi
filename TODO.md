@@ -1,0 +1,3 @@
+- skills per agent
+- tasks should leave no doubt for implementer. they are less capable models. they should be fairly detailed (just enough, not too much).
+- features / discussion should be documented

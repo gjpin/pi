@@ -1,4 +1,7 @@
 /**
+ * Adapted from the subagent example shipped with
+ * @earendil-works/pi-coding-agent 0.83.0.
+ *
  * Subagent Tool - Delegate tasks to specialized agents
  *
  * Spawns a separate `pi` process for each subagent invocation,
@@ -16,17 +19,23 @@ import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
 import { StringEnum } from "@earendil-works/pi-ai";
-import { type ExtensionAPI, getMarkdownTheme, withFileMutationQueue } from "@earendil-works/pi-coding-agent";
+import {
+	CONFIG_DIR_NAME,
+	type ExtensionAPI,
+	getAgentDir,
+	getMarkdownTheme,
+	withFileMutationQueue,
+} from "@earendil-works/pi-coding-agent";
 import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
-const MAX_PARALLEL_TASKS = 8;
-const MAX_CONCURRENCY = 4;
+export const MAX_PARALLEL_TASKS = 8;
+export const MAX_CONCURRENCY = 4;
 const COLLAPSED_ITEM_COUNT = 10;
 const PER_TASK_OUTPUT_CAP = 50 * 1024;
 
@@ -166,23 +175,29 @@ function getFinalOutput(messages: Message[]): string {
 	for (let i = messages.length - 1; i >= 0; i--) {
 		const msg = messages[i];
 		if (msg.role === "assistant") {
-			for (const part of msg.content) {
-				if (part.type === "text") return part.text;
-			}
+			return msg.content
+				.filter((part) => part.type === "text")
+				.map((part) => part.text)
+				.join("\n");
 		}
 	}
 	return "";
 }
 
 function isFailedResult(result: SingleResult): boolean {
-	return result.exitCode !== 0 || result.stopReason === "error" || result.stopReason === "aborted";
+	return (
+		result.exitCode !== 0 ||
+		result.stopReason === "error" ||
+		result.stopReason === "aborted" ||
+		(result.exitCode >= 0 && !getFinalOutput(result.messages))
+	);
 }
 
 function getResultOutput(result: SingleResult): string {
 	if (isFailedResult(result)) {
-		return result.errorMessage || result.stderr || getFinalOutput(result.messages) || "(no output)";
+		return result.errorMessage || result.stderr || getFinalOutput(result.messages) || "No final assistant output.";
 	}
-	return getFinalOutput(result.messages) || "(no output)";
+	return getFinalOutput(result.messages);
 }
 
 function truncateParallelOutput(output: string): string {
@@ -258,51 +273,7 @@ function getPiInvocation(args: string[]): { command: string; args: string[] } {
 }
 
 type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;
-
-/**
- * Resolve skill names to directory/file paths by scanning standard skill directories.
- * Returns paths suitable for use with `--skill <path>`.
- */
-function findSkillPaths(skillNames: string[], cwd: string): string[] {
-	if (skillNames.length === 0) return [];
-
-	const home = os.homedir();
-	const agentDir = getAgentDir();
-
-	// Standard skill directories (in priority order)
-	const dirs: string[] = [
-		path.join(agentDir, "skills"),                 // ~/.pi/agent/skills/
-		path.join(home, ".agents", "skills"),           // ~/.agents/skills/
-		path.join(cwd, ".pi", "skills"),                 // .pi/skills/ (project)
-		path.join(cwd, ".agents", "skills"),             // .agents/skills/ (project)
-	];
-
-	const paths: string[] = [];
-	const found = new Set<string>();
-
-	for (const skillName of skillNames) {
-		for (const dir of dirs) {
-			// Check for <dir>/<name>.md (single-file skill)
-			const filePath = path.join(dir, `${skillName}.md`);
-			if (!found.has(skillName) && fs.existsSync(filePath)) {
-				paths.push(filePath);
-				found.add(skillName);
-				break;
-			}
-
-			// Check for <dir>/<name>/ (directory skill with SKILL.md)
-			const dirPath = path.join(dir, skillName);
-			const skillMdPath = path.join(dirPath, "SKILL.md");
-			if (!found.has(skillName) && fs.existsSync(skillMdPath)) {
-				paths.push(dirPath);
-				found.add(skillName);
-				break;
-			}
-		}
-	}
-
-	return paths;
-}
+export type SpawnProcess = typeof spawn;
 
 async function runSingleAgent(
 	defaultCwd: string,
@@ -314,6 +285,7 @@ async function runSingleAgent(
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
+	spawnProcess: SpawnProcess,
 ): Promise<SingleResult> {
 	const agent = agents.find((a) => a.name === agentName);
 
@@ -334,11 +306,6 @@ async function runSingleAgent(
 	const args: string[] = ["--mode", "json", "-p", "--no-session"];
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
-	if (agent.skills && agent.skills.length > 0) {
-		const skillPaths = findSkillPaths(agent.skills, defaultCwd);
-		args.push("--no-skills");
-		for (const skillPath of skillPaths) args.push("--skill", skillPath);
-	}
 
 	let tmpPromptDir: string | null = null;
 	let tmpPromptPath: string | null = null;
@@ -377,7 +344,7 @@ async function runSingleAgent(
 
 		const exitCode = await new Promise<number>((resolve) => {
 			const invocation = getPiInvocation(args);
-			const proc = spawn(invocation.command, invocation.args, {
+			const proc = spawnProcess(invocation.command, invocation.args, {
 				cwd: cwd ?? defaultCwd,
 				shell: false,
 				stdio: ["ignore", "pipe", "pipe"],
@@ -437,7 +404,8 @@ async function runSingleAgent(
 				resolve(code ?? 0);
 			});
 
-			proc.on("error", () => {
+			proc.on("error", (error) => {
+				currentResult.stderr += `Failed to start subagent: ${error instanceof Error ? error.message : String(error)}`;
 				resolve(1);
 			});
 
@@ -446,8 +414,8 @@ async function runSingleAgent(
 					wasAborted = true;
 					proc.kill("SIGTERM");
 					setTimeout(() => {
-						if (!proc.killed) proc.kill("SIGKILL");
-					}, 5000);
+						if (proc.exitCode === null) proc.kill("SIGKILL");
+					}, 5000).unref();
 				};
 				if (signal.aborted) killProc();
 				else signal.addEventListener("abort", killProc, { once: true });
@@ -502,15 +470,19 @@ const SubagentParams = Type.Object({
 	cwd: Type.Optional(Type.String({ description: "Working directory for the agent process (single mode)" })),
 });
 
-export default function (pi: ExtensionAPI) {
+export function registerSubagent(pi: ExtensionAPI, spawnProcess: SpawnProcess = spawn) {
+	pi.on("resources_discover", () => ({
+		promptPaths: [path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.pi/prompts/feature.md")],
+	}));
+
 	pi.registerTool({
 		name: "subagent",
 		label: "Subagent",
 		description: [
 			"Delegate tasks to specialized subagents with isolated context.",
 			"Modes: single (agent + task), parallel (tasks array), chain (sequential with {previous} placeholder).",
-			'Default agent scope is "user" (from ~/.pi/agent/agents).',
-			'To enable project-local agents in .pi/agents, set agentScope: "both" (or "project").',
+			`Default agent scope is "user" (from ${path.join(getAgentDir(), "agents")}).`,
+			`To enable project-local agents in ${CONFIG_DIR_NAME}/agents, set agentScope: "both" (or "project").`,
 		].join(" "),
 		parameters: SubagentParams,
 
@@ -605,6 +577,7 @@ export default function (pi: ExtensionAPI) {
 						signal,
 						chainUpdate,
 						makeDetails("chain"),
+						spawnProcess,
 					);
 					results.push(result);
 
@@ -683,6 +656,7 @@ export default function (pi: ExtensionAPI) {
 							}
 						},
 						makeDetails("parallel"),
+						spawnProcess,
 					);
 					allResults[index] = result;
 					emitParallelUpdate();
@@ -705,6 +679,7 @@ export default function (pi: ExtensionAPI) {
 						},
 					],
 					details: makeDetails("parallel")(results),
+					isError: successCount !== results.length,
 				};
 			}
 
@@ -719,6 +694,7 @@ export default function (pi: ExtensionAPI) {
 					signal,
 					onUpdate,
 					makeDetails("single"),
+					spawnProcess,
 				);
 				const isError = isFailedResult(result);
 				if (isError) {
@@ -1058,3 +1034,5 @@ export default function (pi: ExtensionAPI) {
 		},
 	});
 }
+
+export default registerSubagent;

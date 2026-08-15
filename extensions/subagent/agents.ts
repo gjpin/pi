@@ -1,10 +1,13 @@
 /**
+ * Adapted from the subagent example shipped with
+ * @earendil-works/pi-coding-agent 0.83.0.
+ *
  * Agent discovery and configuration
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
+import { CONFIG_DIR_NAME, getAgentDir, parseFrontmatter } from "@earendil-works/pi-coding-agent";
 
 export type AgentScope = "user" | "project" | "both";
 
@@ -12,7 +15,6 @@ export interface AgentConfig {
 	name: string;
 	description: string;
 	tools?: string[];
-	skills?: string[];
 	model?: string;
 	systemPrompt: string;
 	source: "user" | "project";
@@ -61,16 +63,10 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 			.map((t: string) => t.trim())
 			.filter(Boolean);
 
-		const skills = frontmatter.skills
-			?.split(",")
-			.map((s: string) => s.trim())
-			.filter(Boolean);
-
 		agents.push({
 			name: frontmatter.name,
 			description: frontmatter.description,
 			tools: tools && tools.length > 0 ? tools : undefined,
-			skills: skills && skills.length > 0 ? skills : undefined,
 			model: frontmatter.model,
 			systemPrompt: body,
 			source,
@@ -92,7 +88,7 @@ function isDirectory(p: string): boolean {
 function findNearestProjectAgentsDir(cwd: string): string | null {
 	let currentDir = cwd;
 	while (true) {
-		const candidate = path.join(currentDir, ".pi", "agents");
+		const candidate = path.join(currentDir, CONFIG_DIR_NAME, "agents");
 		if (isDirectory(candidate)) return candidate;
 
 		const parentDir = path.dirname(currentDir);
