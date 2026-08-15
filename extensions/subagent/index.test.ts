@@ -608,6 +608,20 @@ describe("check-workflow-deps tool", () => {
 		);
 	});
 
+	it("throws when cymbal is provided by an unrelated extension", async () => {
+		process.env.PI_FFF_MODE = "override";
+		process.env.MOCK_CYMBAL_PATH = "extensions/some-unrelated-extension/index.ts";
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/not independently registered/,
+		);
+	});
+
 	it("throws when cymbal tool is builtin", async () => {
 		process.env.PI_FFF_MODE = "override";
 		const execCheck = fakeExecCheck(() => ({}));

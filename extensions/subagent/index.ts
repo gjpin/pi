@@ -1360,6 +1360,12 @@ export function registerSubagent(
 				return combined.includes("@ff-labs/pi-fff") || combined.includes("dmtrkovalenko/fff");
 			}
 
+			function isIndependentCymbalProvenance(tool: { sourceInfo?: { source: string; path?: string } }): boolean {
+				if (!tool?.sourceInfo || tool.sourceInfo.source === "builtin") return false;
+				const path = `${tool.sourceInfo.path ?? ""}`.toLowerCase().replace(/\\/g, "/");
+				return path.includes("extensions/cymbal/");
+			}
+
 			if (!findTool || findTool.sourceInfo?.source === "builtin" || !isFffProvenance(findTool)) {
 				throw new Error(
 					"'find' is not the pi-fff FFF override. " +
@@ -1391,11 +1397,12 @@ export function registerSubagent(
 				);
 			}
 			const cymbalTool = allTools.find((t) => t.name === "cymbal");
-			const cymbalProvenance = `${cymbalTool?.sourceInfo?.source ?? ""} ${cymbalTool?.sourceInfo?.path ?? ""}`.toLowerCase();
-			if (!cymbalTool || cymbalTool.sourceInfo?.source === "builtin" || cymbalProvenance.includes("extensions/subagent/")) {
+			if (!cymbalTool || !isIndependentCymbalProvenance(cymbalTool)) {
 				throw new Error(
-					"'cymbal' tool is not independently registered. The subagent extension no longer provides cymbal; " +
-						"load the independent Cymbal extension (extensions/cymbal/index.ts).",
+					"'cymbal' tool is not independently registered. It must come specifically from the independent " +
+						"Cymbal extension (extensions/cymbal/index.ts); the subagent extension, builtin tools, and unrelated " +
+						"extensions are rejected. Load extensions/cymbal/index.ts in the parent launch and allowlist it " +
+						"for this agent. See: https://github.com/1broseidon/cymbal",
 				);
 			}
 			results.push("✓ Cymbal tool active (independent extension)");

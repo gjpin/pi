@@ -34,12 +34,12 @@ export interface AgentDiscoveryResult {
 
 /**
  * Validate an optional YAML-array resource field (extensions / skills).
- * Absent or null fields yield no resources. Any other shape records an
- * explicit error so the caller can fail before spawning a child.
+ * Absent fields yield no resources. An explicit null or any other shape
+ * records an explicit error so the caller can fail before spawning a child.
  */
 function parseResourceList(field: unknown, fieldName: string, resourceErrors: string[]): string[] | undefined {
-	if (field === undefined || field === null) return undefined;
-	if (!Array.isArray(field) || field.some((item) => typeof item !== "string" || item.trim() === "")) {
+	if (field === undefined) return undefined;
+	if (field === null || !Array.isArray(field) || field.some((item) => typeof item !== "string" || item.trim() === "")) {
 		resourceErrors.push(`"${fieldName}" must be a YAML array of strings`);
 		return undefined;
 	}

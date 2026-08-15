@@ -319,6 +319,26 @@ describe("agent resource frontmatter parsing", () => {
 		assert.ok(agent.resourceErrors?.some((e) => e.includes('"extensions" must be a YAML array of strings')));
 	});
 
+	it("records an explicit error for an explicit null extensions field", async () => {
+		const root = await project();
+		await writeFile(
+			join(root, ".pi", "agents", "bad.md"),
+			markdown("name: bad\ndescription: Malformed\nextensions: null"),
+		);
+		const [agent] = discoverAgents(root, "project").agents;
+		assert.ok(agent.resourceErrors?.some((e) => e.includes('"extensions" must be a YAML array of strings')));
+	});
+
+	it("records an explicit error for an explicit null skills field", async () => {
+		const root = await project();
+		await writeFile(
+			join(root, ".pi", "agents", "bad.md"),
+			markdown("name: bad\ndescription: Malformed\nskills: ~"),
+		);
+		const [agent] = discoverAgents(root, "project").agents;
+		assert.ok(agent.resourceErrors?.some((e) => e.includes('"skills" must be a YAML array of strings')));
+	});
+
 	it("records an explicit error for non-string array items", async () => {
 		const root = await project();
 		await writeFile(
@@ -677,6 +697,24 @@ describe("pre-spawn failures", () => {
 		const fake = fakeSpawn();
 		const { subagent } = registered(fake.spawn);
 		const result = await executeAt(subagent, { agent: "malformed", task: "work", agentScope: "project" }, root);
+		assert.equal(result.isError, true);
+		assert.match(text(result), /"extensions" must be a YAML array of strings/);
+		assert.equal(fake.calls.length, 0);
+	});
+
+	it("fails before spawning when a resource field is explicitly null", async () => {
+		const root = await project();
+		await writeFile(
+			join(root, ".pi", "agents", "null-resources.md"),
+			markdown("name: null-resources\ndescription: N\nextensions: null"),
+		);
+		const fake = fakeSpawn();
+		const { subagent } = registered(fake.spawn);
+		const result = await executeAt(
+			subagent,
+			{ agent: "null-resources", task: "work", agentScope: "project" },
+			root,
+		);
 		assert.equal(result.isError, true);
 		assert.match(text(result), /"extensions" must be a YAML array of strings/);
 		assert.equal(fake.calls.length, 0);
