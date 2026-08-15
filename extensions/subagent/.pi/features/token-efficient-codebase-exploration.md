@@ -95,4 +95,4 @@ Reduce expensive planner exploration for functional feature requests by automati
 ## Review log
 - Initial review: changes-required. Critical findings covered dependency enforcement, FFF provenance, explorer write access, and invalid Cymbal guidance.
 - Bounded fix pass: completed in `bcda0a1fdcf1a62c6efc10910645f9e04e7307b9`, `c789d9fbb84632ff60c0ab9165dd7b8e35b110bf`, and `e21bd5e8346e46990140837176da81838f36b36c`.
-- Final review: pending.
+- Final review: changes-required. Critical: spawned explorer subprocesses do not load the extension that registers the allowlisted `cymbal` tool (`extensions/subagent/index.ts:362-364`). Warning: dependency installation documentation is inconsistent (`extensions/subagent/README.md:87-99`). Automatic fix/review budget exhausted.
