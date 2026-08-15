@@ -1,7 +1,7 @@
 # Feature: Token-efficient codebase exploration
 
 ## Status
-plan-approved
+reviewing
 
 ## Original request
 Use FFF, Cymbal, and a cheap specialized subagent to reduce tokens spent exploring codebases for functional feature requests.
