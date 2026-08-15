@@ -81,9 +81,9 @@ Allow every subagent definition to select an exact, validated subset of extensio
 - Covers: AC4, AC7, AC8
 - Depends on: T2
 - Parallel wave: 3
-- Expected files: `.pi/agents/codebase-explorer.md`, `.pi/agents/feature-implementer.md`, `.pi/agents/feature-reviewer.md`, `extensions/subagent/agents.test.ts`, `extensions/subagent/README.md`
-- Shared resources: checked-in agent definitions and launch documentation
-- Work: Add the approved YAML resource matrix to all three project agents. Add `exa_contents` and `exa_search` only to the implementer tool allowlist; preserve explorer and reviewer read-only boundaries and existing role contracts. Test exact checked-in configuration. Document list syntax, parent-loaded resolution, pre-spawn failures, exact child isolation, independent Cymbal loading, and a launch command containing both extension paths. Do not modify user-global agent copies.
+- Expected files: `.pi/agents/codebase-explorer.md`, `.pi/agents/feature-implementer.md`, `.pi/agents/feature-reviewer.md`, `extensions/subagent/agents.test.ts`, `extensions/subagent/index.test.ts`, `extensions/subagent/README.md`
+- Shared resources: checked-in agent definitions, subagent test resource fixtures, and launch documentation
+- Work: Add the approved YAML resource matrix to all three project agents. Add `exa_contents` and `exa_search` only to the implementer tool allowlist; preserve explorer and reviewer read-only boundaries and existing role contracts. Test exact checked-in configuration and update existing subagent test resource fixtures and child-argument assertions to reflect the approved matrices. Document list syntax, parent-loaded resolution, pre-spawn failures, exact child isolation, independent Cymbal loading, and a launch command containing both extension paths. Do not modify user-global agent copies.
 - Acceptance: All checked-in roles expose exactly the approved resources and tools, and documentation is sufficient to launch and configure the workflow.
 - Checks: `node --test extensions/subagent/*.test.ts extensions/cymbal/*.test.ts`
 
