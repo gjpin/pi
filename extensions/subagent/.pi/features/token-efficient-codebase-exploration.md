@@ -62,8 +62,8 @@ Reduce expensive planner exploration for functional feature requests by automati
 - `node --test extensions/subagent/*.test.ts` - run after each implementation wave and during final verification.
 
 ## Implementation base
-- Branch: pending
-- Base SHA: pending
+- Branch: `pi-feature/token-efficient-codebase-exploration`
+- Base SHA: `c86bff1d8adb89809f6c1b9324ad465cf3c8440c`
 
 ## Task graph
 ### T1: Enforce exploration dependencies and subprocess mode
