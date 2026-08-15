@@ -360,7 +360,7 @@ async function runSingleAgent(
 		};
 	}
 
-	const args: string[] = ["--mode", "json", "-p", "--no-session", "--extension", EXTENSION_PATH];
+	const args: string[] = ["--mode", "json", "-p", "--no-session", "--no-extensions", "--extension", EXTENSION_PATH];
 	if (agent.model) args.push("--model", agent.model);
 	if (agent.tools && agent.tools.length > 0) args.push("--tools", agent.tools.join(","));
 

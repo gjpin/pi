@@ -251,7 +251,7 @@ describe("subagent tool", () => {
 		assert.equal(result.isError, false);
 	});
 
-	it("forwards cwd, model selector, and env to spawned processes", async () => {
+	it("forwards cwd, model selector, and env while isolating child extensions", async () => {
 		const fake = fakeSpawn();
 		const { subagent: tool } = registered(fake.spawn);
 		await execute(tool, {
@@ -265,6 +265,7 @@ describe("subagent tool", () => {
 		const modelIndex = fake.calls[0].args.indexOf("--model");
 		assert.equal(fake.calls[0].args[modelIndex + 1], "openai-codex/gpt-5.6-luna:xhigh");
 		assert.equal(fake.calls[0].args.includes("--no-session"), true);
+		assert.equal(fake.calls[0].args.includes("--no-extensions"), true);
 		const extensionIndex = fake.calls[0].args.indexOf("--extension");
 		assert.match(fake.calls[0].args[extensionIndex + 1], /extensions\/subagent\/index\.ts$/);
 		assert.equal(fake.calls[0].env?.PI_FFF_MODE, "override");
