@@ -4,7 +4,7 @@ import { PassThrough } from "node:stream";
 import { afterEach, describe, it } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-import { registerSubagent, type ExecCheck, type SpawnProcess, CYMBAL_COMMANDS } from "./index.ts";
+import { registerSubagent, type ExecCheck, type SpawnProcess } from "./index.ts";
 
 type ToolResult = {
 	content: Array<{ type: string; text: string }>;
@@ -117,6 +117,10 @@ function mockAllTools(
 		let path: string;
 		if (source === "builtin") {
 			path = `<builtin:${name}>`;
+		} else if (name === "cymbal") {
+			// Independent Cymbal extension provenance; override to simulate the
+			// tool being provided by the subagent extension instead.
+			path = process.env.MOCK_CYMBAL_PATH ?? "extensions/cymbal/index.ts";
 		} else if (provenance === "other") {
 			path = `some-other-fff-extension:/path/to/${name}.ts`;
 		} else {
@@ -197,9 +201,11 @@ function fakeExecCheck(
 }
 
 describe("subagent tool", () => {
-	it("registers both tools and requires exactly one invocation mode", async () => {
+	it("registers only its own workflow tools and requires exactly one invocation mode", async () => {
 		const fake = fakeSpawn();
-		const { subagent: tool } = registered(fake.spawn);
+		const { subagent: tool, checkDeps, cymbal } = registered(fake.spawn);
+		assert.ok(checkDeps, "check-workflow-deps stays in the subagent extension");
+		assert.equal(cymbal, undefined, "subagent extension must not register cymbal");
 		assert.match(text(await execute(tool, { agentScope: "project" })), /exactly one mode/);
 		assert.match(
 			text(
@@ -346,6 +352,7 @@ describe("check-workflow-deps tool", () => {
 			process.env.PI_FFF_MODE = savedEnv;
 		}
 		delete process.env.MOCK_FFF_PATH;
+		delete process.env.MOCK_CYMBAL_PATH;
 	});
 
 	it("passes when PI_FFF_MODE=override, find/grep active FFF, and cymbal available", async () => {
@@ -364,6 +371,7 @@ describe("check-workflow-deps tool", () => {
 		assert.match(text(result), /✓ PI_FFF_MODE=override/);
 		assert.match(text(result), /✓ FFF find override active/);
 		assert.match(text(result), /✓ FFF grep override active/);
+		assert.match(text(result), /✓ Cymbal tool active/);
 		assert.match(text(result), /✓ Cymbal: cymbal v0.14.0/);
 	});
 
@@ -478,6 +486,49 @@ describe("check-workflow-deps tool", () => {
 		assert.match(text(result), /✓ FFF find override active/);
 	});
 
+	it("throws when the independent cymbal tool is not active", async () => {
+		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck((cmd, args) => {
+			if (cmd === "cymbal") return { stdout: "cymbal v0.14.0" };
+			return {};
+		});
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/'cymbal' tool is not active/,
+		);
+	});
+
+	it("throws when cymbal is provided by the subagent extension (not independent)", async () => {
+		process.env.PI_FFF_MODE = "override";
+		process.env.MOCK_CYMBAL_PATH = "extensions/subagent/index.ts";
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "extension" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/not independently registered/,
+		);
+	});
+
+	it("throws when cymbal tool is builtin", async () => {
+		process.env.PI_FFF_MODE = "override";
+		const execCheck = fakeExecCheck(() => ({}));
+		const tools = mockAllTools({ find: "extension", grep: "extension", cymbal: "builtin" });
+		const active = ["find", "grep", "read", "ls", "subagent", "check-workflow-deps", "cymbal"];
+		const { checkDeps } = registered(fakeSpawn().spawn, execCheck, tools, active);
+		assert.ok(checkDeps);
+		await assert.rejects(
+			() => execute(checkDeps, {}),
+			/not independently registered/,
+		);
+	});
+
 	it("throws when cymbal command fails, preserving stderr", async () => {
 		process.env.PI_FFF_MODE = "override";
 		const execCheck = fakeExecCheck((cmd, args) => {
@@ -543,94 +594,5 @@ describe("check-workflow-deps tool", () => {
 		assert.equal(execCalls.length, 1);
 		assert.equal(execCalls[0].command, "cymbal");
 		assert.deepEqual(execCalls[0].args, ["version"]);
-	});
-});
-
-describe("cymbal tool", () => {
-	it("registers the cymbal tool", async () => {
-		const { cymbal } = registered(fakeSpawn().spawn);
-		assert.ok(cymbal, "cymbal tool must be registered");
-	});
-
-	it("accepts allowed cymbal commands", async () => {
-		const execCheck = fakeExecCheck(() => ({ stdout: "ok" }));
-		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
-		assert.ok(cymbal);
-		for (const cmd of CYMBAL_COMMANDS) {
-			const result = await execute(cymbal, { command: cmd });
-			assert.equal(result.isError, undefined, `${cmd} must not set isError`);
-			assert.match(text(result), /ok/);
-		}
-	});
-
-	it("throws for invalid cymbal commands (not isError)", async () => {
-		const execCheck = fakeExecCheck(() => ({ stdout: "should not run" }));
-		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
-		assert.ok(cymbal);
-		await assert.rejects(
-			() => execute(cymbal, { command: "install" }),
-			/Invalid cymbal command/,
-		);
-	});
-
-	it("throws for known-bad mutating commands", async () => {
-		const { cymbal } = registered(fakeSpawn().spawn);
-		assert.ok(cymbal);
-		for (const bad of ["index", "hook", "completion", "help"]) {
-			await assert.rejects(
-				() => execute(cymbal, { command: bad }),
-				/Invalid cymbal command/,
-				`${bad} should throw`,
-			);
-		}
-	});
-
-	it("throws for non-zero exit with stderr preserved", async () => {
-		const execCheck = fakeExecCheck(() => ({ stdout: "", stderr: "not found\nUsage: cymbal show <path>", exitCode: 1 }));
-		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
-		assert.ok(cymbal);
-		await assert.rejects(
-			() => execute(cymbal, { command: "show", args: ["unknown"] }),
-			/not found/,
-		);
-	});
-
-	it("passes command arguments through", async () => {
-		const execCheck = fakeExecCheck((cmd, args) => {
-			assert.equal(cmd, "cymbal");
-			return { stdout: `ran ${args.join(" ")}` };
-		});
-		const { cymbal, execCalls } = registered(fakeSpawn().spawn, execCheck);
-		assert.ok(cymbal);
-		await execute(cymbal, { command: "show", args: ["src/main.ts"] });
-		assert.equal(execCalls.length, 1);
-		assert.deepEqual(execCalls[0].args, ["show", "src/main.ts"]);
-	});
-
-	it("throws on cancellation (aborted signal)", async () => {
-		const execCheck = fakeExecCheck(() => ({ stdout: "should not complete" }));
-		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
-		assert.ok(cymbal);
-		const controller = new AbortController();
-		controller.abort();
-		await assert.rejects(
-			() => execute(cymbal, { command: "version" }, controller.signal),
-			/cymbal execution aborted/,
-		);
-	});
-
-	it("truncates oversized output at 50KB cap and returns full output in details", async () => {
-		const largeOutput = "x".repeat(60 * 1024);
-		const execCheck = fakeExecCheck(() => ({ stdout: largeOutput }));
-		const { cymbal } = registered(fakeSpawn().spawn, execCheck);
-		assert.ok(cymbal);
-		const result = await execute(cymbal, { command: "structure" });
-		assert.ok(Buffer.byteLength(text(result), "utf8") < 55 * 1024);
-		assert.match(text(result), /Output truncated/);
-		// Full untruncated output preserved in details
-		assert.ok(result.details, "details must exist for truncated output");
-		const fullOutput = (result.details as Record<string, unknown>).fullOutput as string | undefined;
-		assert.ok(fullOutput, "details.fullOutput must exist");
-		assert.equal(fullOutput, largeOutput, "full output must be untruncated");
 	});
 });

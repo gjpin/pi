@@ -34,26 +34,6 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 import { type AgentConfig, type AgentScope, discoverAgents } from "./agents.ts";
 
-export const CYMBAL_COMMANDS = [
-	"structure",
-	"investigate",
-	"trace",
-	"impact",
-	"show",
-	"outline",
-	"search",
-	"refs",
-	"context",
-	"ls",
-	"impls",
-	"importers",
-	"diff",
-	"changed",
-	"version",
-] as const;
-
-export type CymbalCommand = (typeof CYMBAL_COMMANDS)[number];
-
 export const MAX_PARALLEL_TASKS = 8;
 export const MAX_CONCURRENCY = 4;
 const EXTENSION_PATH = fileURLToPath(import.meta.url);
@@ -1104,7 +1084,7 @@ export function registerSubagent(
 		name: "check-workflow-deps",
 		label: "Check Workflow Dependencies",
 		description: [
-			"Verify that FFF override mode and Cymbal CLI are available for codebase exploration.",
+			"Verify that FFF override mode, the Cymbal CLI, and the independently registered cymbal tool are available for codebase exploration.",
 			"Returns success details or actionable install/configuration guidance.",
 			"Does not install or modify dependencies.",
 		].join(" "),
@@ -1168,6 +1148,26 @@ export function registerSubagent(
 			}
 			results.push("✓ FFF grep override active (pi-fff)");
 
+			// Verify the independently registered Cymbal tool is active (AC6).
+			// The subagent extension no longer provides cymbal; it must come from
+			// the independent extension loaded in the parent launch.
+			if (!activeTools.includes("cymbal")) {
+				throw new Error(
+					"'cymbal' tool is not active. Load the independent Cymbal extension (extensions/cymbal/index.ts) " +
+						"in the parent launch and allowlist it for this agent. " +
+						"See: https://github.com/1broseidon/cymbal",
+				);
+			}
+			const cymbalTool = allTools.find((t) => t.name === "cymbal");
+			const cymbalProvenance = `${cymbalTool?.sourceInfo?.source ?? ""} ${cymbalTool?.sourceInfo?.path ?? ""}`.toLowerCase();
+			if (!cymbalTool || cymbalTool.sourceInfo?.source === "builtin" || cymbalProvenance.includes("extensions/subagent/")) {
+				throw new Error(
+					"'cymbal' tool is not independently registered. The subagent extension no longer provides cymbal; " +
+						"load the independent Cymbal extension (extensions/cymbal/index.ts).",
+				);
+			}
+			results.push("✓ Cymbal tool active (independent extension)");
+
 			const cymbalResult = await execCheck("cymbal", ["version"]);
 			if (cymbalResult.exitCode !== 0 || !cymbalResult.stdout.trim()) {
 				const stderr = cymbalResult.stderr ? `: ${cymbalResult.stderr}` : "";
@@ -1181,71 +1181,6 @@ export function registerSubagent(
 			return {
 				content: [{ type: "text" as const, text: results.join("\n") }],
 				details: cymbalResult,
-			};
-		},
-	});
-
-	const ALLOWED_CYMBAL_COMMANDS = new Set(CYMBAL_COMMANDS);
-	const CYMBAL_OUTPUT_CAP = 50 * 1024;
-
-	pi.registerTool({
-		name: "cymbal",
-		label: "Cymbal",
-		description: [
-			"Run a read-only Cymbal navigation command (structure, investigate, trace, impact, show, outline, search, refs, context, ls, impls, importers, diff, changed, version).",
-			"Cannot invoke mutating Cymbal commands or arbitrary shell.",
-			"Errors and truncation are reported in the output.",
-		].join(" "),
-		parameters: Type.Object({
-			command: Type.String({
-				description: "Cymbal subcommand to run (read-only navigation commands only)",
-			}),
-			args: Type.Optional(
-				Type.Array(Type.String(), {
-					description: "Arguments for the subcommand",
-				}),
-			),
-		}),
-		async execute(_toolCallId, params, signal, _onUpdate, _ctx) {
-			const command = params.command as string;
-			if (!ALLOWED_CYMBAL_COMMANDS.has(command)) {
-				throw new Error(
-					`Invalid cymbal command: "${command}". Allowed: ${CYMBAL_COMMANDS.join(", ")}.`,
-				);
-			}
-
-			const args = (params.args as string[]) ?? [];
-			if (signal?.aborted) {
-				throw new Error("cymbal execution aborted");
-			}
-
-			const result = await pi.exec("cymbal", [command, ...args], { signal });
-
-			if (result.code !== 0 && result.code !== undefined) {
-				const errMsg = (result.stderr || result.stdout || "").trim();
-				throw new Error(errMsg || `cymbal "${command}" exited with code ${result.code}`);
-			}
-
-			const fullOutput = result.stdout + (result.stderr ? `\n${result.stderr}` : "");
-			const byteLength = Buffer.byteLength(fullOutput, "utf8");
-			if (byteLength > CYMBAL_OUTPUT_CAP) {
-				let truncated = fullOutput.slice(0, CYMBAL_OUTPUT_CAP);
-				while (Buffer.byteLength(truncated, "utf8") > CYMBAL_OUTPUT_CAP) {
-					truncated = truncated.slice(0, -1);
-				}
-				return {
-					content: [
-						{
-							type: "text" as const,
-							text: `${truncated}\n\n[Output truncated: ${byteLength - Buffer.byteLength(truncated, "utf8")} bytes omitted. Full output preserved in tool details.]`,
-						},
-					],
-					details: { fullOutput },
-				};
-			}
-
-			return {
-				content: [{ type: "text" as const, text: fullOutput }],
 			};
 		},
 	});
